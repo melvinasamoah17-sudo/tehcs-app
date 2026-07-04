@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "428200196151",
+    "project_id": "tehcs-675c6",
+    "storage_bucket": "tehcs-675c6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:428200196151:android:2ea32fc921f6db29c7e7b2",
+        "android_client_info": {
+          "package_name": "com.example.tehcs"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "428200196151-pehniovlrpbdllv8vvp4lcd528sf2bhj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDLwdFuwCKm5rPR5m9pJDvoO7tuX0NzfAE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "428200196151-pehniovlrpbdllv8vvp4lcd528sf2bhj.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "428200196151-tiptujrvcs7t14l2ea7a1sgg2i32ql43.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.tehcs"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

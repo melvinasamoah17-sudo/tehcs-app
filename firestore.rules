@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: Checks if the user is an authorized staff member
+    function isStaff() {
+      return request.auth != null && (
+        request.auth.token.email == 'twitchempireinfo@gmail.com' ||
+        exists(/databases/$(database)/documents/staff/$(request.auth.uid)) ||
+        exists(/databases/$(database)/documents/staff_by_email/$(request.auth.token.email))
+      );
+    }
+
+    // 1. Enquiries (from tehcs.com contact form)
+    match /enquiries/{docId} {
+      allow create: if true; // Public can submit
+      allow read, update, delete: if isStaff();
+    }
+
+    // 2. Services (App/Website list)
+    match /services/{docId} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
+    // 3. Staff Accounts
+    // Only existing staff (or the hardcoded owner) may create/modify staff records.
+    // Self-write is intentionally NOT allowed, to prevent privilege escalation.
+    match /staff/{userId} {
+      allow read: if request.auth != null;
+      allow write: if isStaff();
+    }
+
+    // 4. Bookings
+    match /bookings/{docId} {
+      allow create: if request.auth != null;
+      allow read, update: if isStaff() || (request.auth != null && (resource == null || resource.data.uid == request.auth.uid));
+      allow delete: if isStaff();
+    }
+
+    // 5. Clients (App Profiles)
+    match /clients/{docId} {
+      allow create: if request.auth != null;
+      allow read, update: if isStaff() || (request.auth != null && (resource == null || resource.data.uid == request.auth.uid || docId == request.auth.uid));
+    }
+
+    // 6. Chats (Support messages)
+    match /chats/{docId} {
+      allow create: if request.auth != null;
+      allow read, update: if isStaff() || (request.auth != null && (resource == null || resource.data.uid == request.auth.uid));
+    }
+  }
+}
