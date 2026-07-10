@@ -3,8 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../theme/app_theme.dart';
+import '../../services/auth_routing.dart';
 import 'register_screen.dart';
-import '../main_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -38,8 +38,12 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       debugPrint('Login success');
       if (!mounted) return;
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      final destination = await resolveHomeScreen(user);
+      if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainScreen()),
+        MaterialPageRoute(builder: (_) => destination),
       );
     } on FirebaseAuthException catch (e) {
       debugPrint('Login FirebaseAuthException: ${e.code} - ${e.message}');

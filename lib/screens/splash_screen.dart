@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../theme/app_theme.dart';
+import '../services/auth_routing.dart';
 import 'auth/login_screen.dart';
-import 'main_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -31,8 +31,10 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
     try {
       final user = FirebaseAuth.instance.currentUser;
+      final destination = user != null ? await resolveHomeScreen(user) : const LoginScreen();
+      if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => user != null ? const MainScreen() : const LoginScreen()),
+        MaterialPageRoute(builder: (_) => destination),
       );
     } catch (e) {
       debugPrint('Splash navigation error: $e');
@@ -58,7 +60,6 @@ class _SplashScreenState extends State<SplashScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Logo box
                 Container(
                   width: 100, height: 100,
                   decoration: BoxDecoration(

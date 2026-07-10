@@ -5,14 +5,16 @@ import '../theme/app_theme.dart';
 class BottomNav extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
+  final bool showChat;
 
   const BottomNav({
     super.key,
     required this.currentIndex,
     required this.onTap,
+    this.showChat = true,
   });
 
-  static const _items = [
+  static const _allItems = [
     _NavItem(icon: Icons.home_outlined,           activeIcon: Icons.home,              label: 'Home'),
     _NavItem(icon: Icons.medical_services_outlined,activeIcon: Icons.medical_services,  label: 'Services'),
     _NavItem(icon: Icons.calendar_today_outlined,  activeIcon: Icons.calendar_today,    label: 'Bookings'),
@@ -22,6 +24,9 @@ class BottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final items = showChat
+        ? _allItems
+        : [_allItems[0], _allItems[1], _allItems[2], _allItems[4]];
     return Container(
       decoration: const BoxDecoration(
         color: AppTheme.white,
@@ -35,8 +40,8 @@ class BottomNav extends StatelessWidget {
         child: SizedBox(
           height: 60,
           child: Row(
-            children: List.generate(_items.length, (i) {
-              final item   = _items[i];
+            children: List.generate(items.length, (i) {
+              final item   = items[i];
               final active = i == currentIndex;
               return Expanded(
                 child: GestureDetector(
@@ -45,7 +50,6 @@ class BottomNav extends StatelessWidget {
                   child: Stack(
                     alignment: Alignment.topCenter,
                     children: [
-                      // Gold top indicator
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 220),
                         curve: Curves.easeOutCubic,
@@ -57,7 +61,6 @@ class BottomNav extends StatelessWidget {
                           borderRadius: const BorderRadius.vertical(bottom: Radius.circular(3)),
                         ),
                       ),
-                      // Content
                       Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [

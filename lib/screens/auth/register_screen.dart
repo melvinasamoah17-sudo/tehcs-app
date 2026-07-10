@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../theme/app_theme.dart';
-import '../main_screen.dart';
+import 'verify_email_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -30,6 +30,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         password: _pwdCtrl.text,
       );
       await cred.user!.updateDisplayName(_nameCtrl.text.trim());
+      await cred.user!.sendEmailVerification();
       await FirebaseFirestore.instance.collection('clients').add({
         'uid':       cred.user!.uid,
         'name':      _nameCtrl.text.trim(),
@@ -39,7 +40,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       });
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const MainScreen()),
+        MaterialPageRoute(builder: (_) => const VerifyEmailScreen()),
             (_) => false,
       );
     } on FirebaseAuthException catch (e) {
@@ -131,7 +132,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       TextFormField(
                         controller: _nameCtrl,
                         textCapitalization: TextCapitalization.words,
-                        decoration: const InputDecoration(hintText: 'John Mensah', prefixIcon: Icon(Icons.person_outline, size: 20)),
+                        decoration: const InputDecoration(hintText: 'Sarah Ackah', prefixIcon: Icon(Icons.person_outline, size: 20)),
                         validator: (v) => v == null || v.trim().isEmpty ? 'Enter your name' : null,
                       ),
                       const SizedBox(height: 14),

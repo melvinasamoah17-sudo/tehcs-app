@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_theme.dart';
 import '../models/booking.dart';
+import '../services/session_control.dart';
+import 'admin_messages_screen.dart';
 
 class AdminPanel extends StatefulWidget {
   final String mode; // 'admin' or 'staff'
@@ -13,26 +15,42 @@ class AdminPanel extends StatefulWidget {
   State<AdminPanel> createState() => _AdminPanelState();
 }
 
-class _AdminPanelState extends State<AdminPanel> with SingleTickerProviderStateMixin {
+class _AdminPanelState extends State<AdminPanel> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
   late String currentMode;
   final String primaryAdminEmail = 'twitchempireinfo@gmail.com';
+  DateTime? _pausedAt;
 
   bool get isPrimaryAdmin => FirebaseAuth.instance.currentUser?.email == primaryAdminEmail;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // If not primary admin but mode is admin, force staff mode.
     // Resolved ONCE here so it stays in sync with the TabController length.
     currentMode = (!isPrimaryAdmin && widget.mode == 'admin') ? 'staff' : widget.mode;
-    _tabController = TabController(length: currentMode == 'admin' ? 2 : 1, vsync: this);
+    _tabController = TabController(length: currentMode == 'admin' ? 3 : 2, vsync: this);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _pausedAt ??= DateTime.now();
+    } else if (state == AppLifecycleState.resumed) {
+      final pausedAt = _pausedAt;
+      _pausedAt = null;
+      if (pausedAt != null && DateTime.now().difference(pausedAt) >= kAutoSignOutThreshold) {
+        performForceSignOut(context);
+      }
+    }
   }
 
   @override
@@ -40,34 +58,48 @@ class _AdminPanelState extends State<AdminPanel> with SingleTickerProviderStateM
     // If not primary admin but mode is admin, force staff mode
     final currentMode = (!isPrimaryAdmin && widget.mode == 'admin') ? 'staff' : widget.mode;
 
-    return Scaffold(
-      backgroundColor: AppTheme.offWhite,
-      appBar: AppBar(
-        backgroundColor: AppTheme.navyDark,
-        title: Text(currentMode == 'admin' ? 'ADMIN PORTAL' : 'STAFF VIEW', 
-          style: GoogleFonts.barlowCondensed(fontSize: 20, fontWeight: FontWeight.w900, color: AppTheme.white, letterSpacing: 1.5)
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (!didPop) handleGuardedBackPress(context);
+      },
+      child: Scaffold(
+        backgroundColor: AppTheme.offWhite,
+        appBar: AppBar(
+          backgroundColor: AppTheme.navyDark,
+          title: Text(currentMode == 'admin' ? 'ADMIN PORTAL' : 'STAFF VIEW',
+              style: GoogleFonts.barlowCondensed(fontSize: 20, fontWeight: FontWeight.w900, color: AppTheme.white, letterSpacing: 1.5)
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.logout, color: Colors.white),
+              tooltip: 'Sign Out',
+              onPressed: () => performForceSignOut(context),
+            ),
+          ],
+          bottom: TabBar(
+            controller: _tabController,
+            indicatorColor: AppTheme.gold,
+            labelColor: AppTheme.gold,
+            unselectedLabelColor: Colors.white60,
+            tabs: [
+              const Tab(text: 'ALL BOOKINGS'),
+              const Tab(text: 'MESSAGES'),
+              if (currentMode == 'admin') const Tab(text: 'STAFF MANAGEMENT'),
+            ],
+          ),
         ),
-        bottom: TabBar(
+        body: TabBarView(
           controller: _tabController,
-          indicatorColor: AppTheme.gold,
-          labelColor: AppTheme.gold,
-          unselectedLabelColor: Colors.white60,
-          tabs: [
-            const Tab(text: 'ALL BOOKINGS'),
-            if (currentMode == 'admin') const Tab(text: 'STAFF MANAGEMENT'),
+          children: [
+            _buildBookingsTab(),
+            const AdminMessagesScreen(),
+            if (currentMode == 'admin') _buildStaffTab(),
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildBookingsTab(),
-          if (currentMode == 'admin') _buildStaffTab(),
-        ],
-      ),
     );
   }
-
   Widget _buildBookingsTab() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('bookings').orderBy('createdAt', descending: true).snapshots(),
@@ -90,7 +122,7 @@ class _AdminPanelState extends State<AdminPanel> with SingleTickerProviderStateM
           itemBuilder: (context, index) {
             final booking = bookings[index];
             final docId = snapshot.data!.docs[index].id;
-            
+
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -115,8 +147,8 @@ class _AdminPanelState extends State<AdminPanel> with SingleTickerProviderStateM
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('Status: ${booking.status.toUpperCase()}', 
-                              style: TextStyle(color: booking.statusColor, fontWeight: FontWeight.bold, fontSize: 12)
+                            Text('Status: ${booking.status.toUpperCase()}',
+                                style: TextStyle(color: booking.statusColor, fontWeight: FontWeight.bold, fontSize: 12)
                             ),
                             PopupMenuButton<String>(
                               onSelected: (val) => _updateStatus(docId, val),
@@ -189,7 +221,7 @@ class _AdminPanelState extends State<AdminPanel> with SingleTickerProviderStateM
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                 return const Center(child: Text('No staff members yet.'));
               }
-              
+
               final staff = snapshot.data!.docs;
               return ListView.builder(
                 itemCount: staff.length,
@@ -197,7 +229,7 @@ class _AdminPanelState extends State<AdminPanel> with SingleTickerProviderStateM
                   final data = staff[index].data() as Map<String, dynamic>;
                   final name = data['name'] ?? 'No Name';
                   final email = data['email'] ?? 'No Email';
-                  
+
                   return ListTile(
                     leading: CircleAvatar(
                       backgroundColor: AppTheme.navy,
@@ -207,7 +239,7 @@ class _AdminPanelState extends State<AdminPanel> with SingleTickerProviderStateM
                     subtitle: Text(email),
                     trailing: PopupMenuButton<String>(
                       onSelected: (val) {
-                        if (val == 'delete') _deleteStaff(staff[index].id);
+                        if (val == 'delete') _deleteStaff(staff[index].id, email);
                       },
                       itemBuilder: (ctx) => [
                         const PopupMenuItem(value: 'delete', child: Text('Remove Staff', style: TextStyle(color: Colors.red))),
@@ -256,10 +288,21 @@ class _AdminPanelState extends State<AdminPanel> with SingleTickerProviderStateM
   }
 
   Future<void> _addStaff(String name, String email) async {
+    final emailLower = email.trim().toLowerCase();
     try {
+      // staff_by_email is the document our security rules (and the app's
+      // role-based routing) actually check, keyed by email since a newly
+      // added staff member may not have signed up yet.
+      await FirebaseFirestore.instance.collection('staff_by_email').doc(emailLower).set({
+        'name': name,
+        'email': emailLower,
+        'role': 'staff',
+        'addedAt': FieldValue.serverTimestamp(),
+      });
+      // staff/ is just the list shown in this admin UI.
       await FirebaseFirestore.instance.collection('staff').add({
         'name': name,
-        'email': email,
+        'email': emailLower,
         'role': 'staff',
         'addedAt': FieldValue.serverTimestamp(),
       });
@@ -268,9 +311,13 @@ class _AdminPanelState extends State<AdminPanel> with SingleTickerProviderStateM
     }
   }
 
-  Future<void> _deleteStaff(String id) async {
+  Future<void> _deleteStaff(String id, String email) async {
     try {
       await FirebaseFirestore.instance.collection('staff').doc(id).delete();
+      final emailLower = email.trim().toLowerCase();
+      if (emailLower.isNotEmpty) {
+        await FirebaseFirestore.instance.collection('staff_by_email').doc(emailLower).delete();
+      }
     } catch (e) {
       debugPrint('Delete staff error: $e');
     }
