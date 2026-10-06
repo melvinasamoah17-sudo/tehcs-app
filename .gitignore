@@ -56,6 +56,7 @@ android/key.properties
 
 # Backup files created during troubleshooting
 *.bak
+*.bak*
 
 # Debug/diagnostic dump files
 hs_err_pid*.log
@@ -64,3 +65,8 @@ java_error_in_studio*.hprof
 replay_pid*.log
 *_full.txt
 *_full_pid.txt
+# Local secrets (copy secrets.example.json to secrets.json)
+secrets.json
+
+# Azurite local storage emulator data
+__azurite_db_*.json

@@ -47,13 +47,13 @@ class BookingCard extends StatelessWidget {
                 Text(booking.icon, style: const TextStyle(fontSize: 22)),
                 const SizedBox(width: 10),
                 Expanded(child: Text(booking.service,
-                  style: GoogleFonts.barlowCondensed(fontSize: 15, fontWeight: FontWeight.w900, color: AppTheme.navy, letterSpacing: 0.3),
+                  style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w900, color: AppTheme.navy, letterSpacing: 0.3),
                 )),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                   decoration: BoxDecoration(color: _statusColor.withOpacity(0.12), borderRadius: BorderRadius.circular(100)),
                   child: Text(booking.status.toUpperCase(),
-                    style: GoogleFonts.barlowCondensed(fontSize: 9, fontWeight: FontWeight.w800, color: _statusColor, letterSpacing: 0.6),
+                    style: GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w800, color: _statusColor, letterSpacing: 0.6),
                   ),
                 ),
               ]),
@@ -79,8 +79,8 @@ class BookingCard extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
                 child: Column(children: [
                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    Text('In Progress', style: GoogleFonts.barlowCondensed(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.green, letterSpacing: 0.5)),
-                    Text('60%', style: GoogleFonts.barlowCondensed(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.green)),
+                    Text('In Progress', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.green, letterSpacing: 0.5)),
+                    Text('60%', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.green)),
                   ]),
                   const SizedBox(height: 5),
                   ClipRRect(
@@ -102,7 +102,7 @@ class BookingCard extends StatelessWidget {
                 ),
                 child: Text('Tap for details',
                   textAlign: TextAlign.center,
-                  style: GoogleFonts.barlowCondensed(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.textMute, letterSpacing: 0.5),
+                  style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.textMute, letterSpacing: 0.5),
                 ),
               ),
           ],
@@ -114,6 +114,6 @@ class BookingCard extends StatelessWidget {
   Widget _row(IconData icon, String text) => Row(children: [
     Icon(icon, size: 13, color: AppTheme.textMute),
     const SizedBox(width: 6),
-    Expanded(child: Text(text, style: GoogleFonts.nunito(fontSize: 12, color: AppTheme.textMid, fontWeight: FontWeight.w300))),
+    Expanded(child: Text(text, style: GoogleFonts.inter(fontSize: 12, color: AppTheme.textMid, fontWeight: FontWeight.w300))),
   ]);
 }

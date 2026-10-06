@@ -9,7 +9,8 @@ import '../theme/app_theme.dart';
 class BookingScreen extends StatefulWidget {
   final String service;
   final String icon;
-  const BookingScreen({super.key, required this.service, required this.icon});
+  final String category;
+  const BookingScreen({super.key, required this.service, required this.icon, this.category = ''});
   @override
   State<BookingScreen> createState() => _BookingScreenState();
 }
@@ -94,6 +95,7 @@ class _BookingScreenState extends State<BookingScreen> {
     final notes    = _notesCtrl.text.trim();
     final service  = widget.service;
     final icon     = widget.icon;
+    final category = widget.category;
     final ts       = DateTime.now().toString();
 
     try {
@@ -105,6 +107,7 @@ class _BookingScreenState extends State<BookingScreen> {
         'clientEmail': email,
         'phone':       phone,
         'service':     service,
+        'category':    category,
         'icon':        icon,
         'date':        date,
         'time':        time,

@@ -46,7 +46,7 @@ class ServiceChip extends StatelessWidget {
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.barlowCondensed(
+            style: GoogleFonts.poppins(
               fontSize: 11, fontWeight: FontWeight.w800,
               color: AppTheme.navy, letterSpacing: 0.2, height: 1.2,
             ),
@@ -56,7 +56,7 @@ class ServiceChip extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(color: _catColor.withOpacity(0.1), borderRadius: BorderRadius.circular(100)),
             child: Text(category,
-              style: GoogleFonts.barlowCondensed(fontSize: 8, fontWeight: FontWeight.w700, color: _catColor, letterSpacing: 0.3),
+              style: GoogleFonts.poppins(fontSize: 8, fontWeight: FontWeight.w700, color: _catColor, letterSpacing: 0.3),
             ),
           ),
         ]),

@@ -31,6 +31,14 @@ service cloud.firestore {
       allow write: if isStaff();
     }
 
+    // 3b. Staff lookup by email (used for role resolution and by the
+    // isStaff() helper). Any signed-in user needs to read this to
+    // check their own role; only staff/admin can add or remove entries.
+    match /staff_by_email/{email} {
+      allow read: if request.auth != null;
+      allow write: if isStaff();
+    }
+
     // 4. Bookings
     match /bookings/{docId} {
       allow create: if request.auth != null;
@@ -47,7 +55,9 @@ service cloud.firestore {
     // 6. Chats (Support messages)
     match /chats/{docId} {
       allow create: if request.auth != null;
-      allow read, update: if isStaff() || (request.auth != null && (resource == null || resource.data.uid == request.auth.uid));
+      // Fixed: removed resource == null on reads so users can't read other people's chats
+      allow read, update: if isStaff() || (request.auth != null && resource != null && resource.data.uid == request.auth.uid);
+      allow delete: if isStaff();
     }
   }
 }
