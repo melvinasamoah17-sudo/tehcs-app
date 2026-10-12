@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -11,6 +14,10 @@ import 'screens/auth/login_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // UK formatting (dd/MM/yyyy, 24h clock, Monday-first calendars)
+  Intl.defaultLocale = 'en_GB';
+  await initializeDateFormatting('en_GB');
 
   // Lock to portrait
   await SystemChrome.setPreferredOrientations([
@@ -118,6 +125,9 @@ class _TEHCSAppState extends State<TEHCSApp> with WidgetsBindingObserver {
       debugShowCheckedModeBanner: false,
       navigatorKey: _navigatorKey,
       theme: AppTheme.theme,
+      locale: const Locale('en', 'GB'),
+      supportedLocales: const [Locale('en', 'GB')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       home: widget.firebaseError != null
           ? Scaffold(
               body: Center(

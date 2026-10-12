@@ -7,6 +7,9 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
 import 'dart:io';
 import '../../theme/app_theme.dart';
+import '../../services/auth_routing.dart';
+import '../../services/region_service.dart';
+import '../auth/login_screen.dart';
 
 // ─────────────────────────────────────────
 // VERIFYAFRICA CONFIG
@@ -19,7 +22,9 @@ const _vaApiKey  = String.fromEnvironment('VERIFY_AFRICA_API_KEY');
 
 class VerifyAfricaScreen extends StatefulWidget {
   final String role; // 'customer' | 'staff'
-  const VerifyAfricaScreen({super.key, this.role = 'customer'});
+  /// Part of sign-up: cannot be skipped, and continues into the app.
+  final bool onboarding;
+  const VerifyAfricaScreen({super.key, this.role = 'customer', this.onboarding = false});
 
   @override
   State<VerifyAfricaScreen> createState() => _VerifyAfricaScreenState();
@@ -32,20 +37,31 @@ class _VerifyAfricaScreenState extends State<VerifyAfricaScreen>
   int   _step       = 0; // 0=select ID, 1=enter details, 2=selfie, 3=result
 
   // ── ID Types ──
+  String _country   = 'GH'; // 'GH' | 'GB'
   String _idType    = 'GHANA_CARD';
-  final _idTypes = [
-    {'id': 'GHANA_CARD',  'label': 'Ghana Card',        'icon': Icons.badge_outlined, 'desc': 'National ID Card'},
-    {'id': 'PASSPORT',    'label': 'Passport',           'icon': Icons.import_contacts_outlined, 'desc': 'International Passport'},
-    {'id': 'DRIVERS',     'label': 'Driver\'s Licence',  'icon': Icons.directions_car_outlined, 'desc': 'DVLA Driver\'s Licence'},
-    {'id': 'SSNIT',       'label': 'SSNIT Card',         'icon': Icons.account_balance_outlined, 'desc': 'Social Security Card'},
-    {'id': 'VOTERS',      'label': 'Voter\'s ID',        'icon': Icons.how_to_vote_outlined, 'desc': 'Electoral Commission ID'},
-  ];
+  static const _idTypesByCountry = {
+    'GH': [
+      {'id': 'GHANA_CARD',  'label': 'Ghana Card',        'icon': Icons.badge_outlined, 'desc': 'National ID Card', 'hint': 'e.g. GHA-XXXXXXXXX-X'},
+      {'id': 'PASSPORT',    'label': 'Passport',           'icon': Icons.import_contacts_outlined, 'desc': 'Ghanaian Passport', 'hint': 'e.g. G1234567'},
+      {'id': 'DRIVERS',     'label': 'Driver\'s Licence',  'icon': Icons.directions_car_outlined, 'desc': 'DVLA Ghana Driver\'s Licence', 'hint': 'Licence number'},
+      {'id': 'SSNIT',       'label': 'SSNIT Card',         'icon': Icons.account_balance_outlined, 'desc': 'Social Security Card', 'hint': 'SSNIT number'},
+      {'id': 'VOTERS',      'label': 'Voter\'s ID',        'icon': Icons.how_to_vote_outlined, 'desc': 'Electoral Commission ID', 'hint': 'Voter ID number'},
+    ],
+    'GB': [
+      {'id': 'PASSPORT',    'label': 'UK Passport',        'icon': Icons.import_contacts_outlined, 'desc': 'British Passport', 'hint': 'e.g. 123456789'},
+      {'id': 'DRIVERS',     'label': 'Driving Licence',    'icon': Icons.directions_car_outlined, 'desc': 'DVLA Photocard Driving Licence', 'hint': 'e.g. MORGA753116SM9IJ'},
+      {'id': 'SHARE_CODE',  'label': 'eVisa / Share Code', 'icon': Icons.qr_code_2_outlined, 'desc': 'UKVI Right to Work / Rent Share Code', 'hint': 'e.g. W12 345 678'},
+      {'id': 'NI_NUMBER',   'label': 'National Insurance', 'icon': Icons.account_balance_outlined, 'desc': 'National Insurance Number', 'hint': 'e.g. QQ 12 34 56 C'},
+    ],
+  };
+  List<Map<String, Object>> get _idTypes => _idTypesByCountry[_country]!;
 
   // ── Form fields ──
   final _idNumberCtrl  = TextEditingController();
   final _firstNameCtrl = TextEditingController();
   final _lastNameCtrl  = TextEditingController();
   final _dobCtrl       = TextEditingController();
+  String _dobIso       = ''; // sent to the API as YYYY-MM-DD
 
   // ── State ──
   File?   _selfie;
@@ -61,6 +77,8 @@ class _VerifyAfricaScreenState extends State<VerifyAfricaScreen>
   @override
   void initState() {
     super.initState();
+    _country = RegionService.current.code;
+    _idType  = _idTypes.first['id'] as String;
     _animCtrl  = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
     _checkScale = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _animCtrl, curve: Curves.elasticOut));
@@ -87,9 +105,31 @@ class _VerifyAfricaScreenState extends State<VerifyAfricaScreen>
     if (_step > 0) {
       setState(() { _step--; _error = null; });
       _pageCtrl.previousPage(duration: const Duration(milliseconds: 350), curve: Curves.easeInOut);
+    } else if (widget.onboarding) {
+      _signOut();
     } else {
       Navigator.pop(context);
     }
+  }
+
+  Future<void> _signOut() async {
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
+  }
+
+  Future<void> _finish() async {
+    if (!widget.onboarding) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return _signOut();
+    final screen = await resolveHomeScreen(user);
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => screen), (_) => false);
   }
 
   bool _validateDetails() {
@@ -130,8 +170,8 @@ class _VerifyAfricaScreenState extends State<VerifyAfricaScreen>
           'id_number':  _idNumberCtrl.text.trim(),
           'first_name': _firstNameCtrl.text.trim(),
           'last_name':  _lastNameCtrl.text.trim(),
-          'dob':        _dobCtrl.text.trim(),
-          'country':    'GH',
+          'dob':        _dobIso,
+          'country':    _country,
         }),
       );
 
@@ -176,7 +216,7 @@ class _VerifyAfricaScreenState extends State<VerifyAfricaScreen>
         },
         body: jsonEncode({
           'image':   base64,
-          'country': 'GH',
+          'country': _country,
         }),
       );
 
@@ -206,6 +246,7 @@ class _VerifyAfricaScreenState extends State<VerifyAfricaScreen>
       type:              true,
       'verifiedAt':      FieldValue.serverTimestamp(),
       'idType':          _idType,
+      'idCountry':       _country,
       'verifyAfricaRef': data['reference'] ?? '',
     });
     // Also log to verifications collection
@@ -214,6 +255,7 @@ class _VerifyAfricaScreenState extends State<VerifyAfricaScreen>
       'role':      widget.role,
       'type':      type,
       'idType':    _idType,
+      'idCountry': _country,
       'status':    'verified',
       'reference': data['reference'] ?? '',
       'createdAt': FieldValue.serverTimestamp(),
@@ -266,7 +308,9 @@ class _VerifyAfricaScreenState extends State<VerifyAfricaScreen>
       padding: const EdgeInsets.all(18),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _sectionTitle('Select ID Type'),
-        Text('Choose the type of ID you want to verify with',
+        Text(widget.onboarding
+            ? 'Last step of sign-up — verify your identity to start using TEHCS. Choose the country and type of your ID.'
+            : 'Choose the type of ID you want to verify with',
           style: GoogleFonts.inter(fontSize: 13, color: AppTheme.textMute, fontWeight: FontWeight.w300)),
         const SizedBox(height: 20),
 
@@ -290,6 +334,31 @@ class _VerifyAfricaScreenState extends State<VerifyAfricaScreen>
           ]),
         ),
         const SizedBox(height: 20),
+
+        // ── Country of ID ──
+        Row(children: [
+          for (final c in const [['GH', '🇬🇭  Ghana'], ['GB', '🇬🇧  United Kingdom']]) ...[
+            Expanded(child: GestureDetector(
+              onTap: () => setState(() {
+                _country = c[0];
+                _idType  = _idTypes.first['id'] as String;
+              }),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: _country == c[0] ? AppTheme.navy : AppTheme.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _country == c[0] ? AppTheme.navy : AppTheme.border)),
+                child: Center(child: Text(c[1], style: GoogleFonts.poppins(
+                  fontSize: 13, fontWeight: FontWeight.w700,
+                  color: _country == c[0] ? Colors.white : AppTheme.navyDark))),
+              ),
+            )),
+            if (c[0] == 'GH') const SizedBox(width: 10),
+          ],
+        ]),
+        const SizedBox(height: 16),
 
         ..._idTypes.map((t) {
           final sel = _idType == t['id'];
@@ -330,7 +399,8 @@ class _VerifyAfricaScreenState extends State<VerifyAfricaScreen>
   // STEP 1 — ENTER DETAILS
   // ═══════════════════════════════════════
   Widget _buildStep1Details() {
-    final idLabel = _idTypes.firstWhere((t) => t['id'] == _idType)['label'] as String;
+    final idInfo  = _idTypes.firstWhere((t) => t['id'] == _idType);
+    final idLabel = idInfo['label'] as String;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(18),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -342,7 +412,7 @@ class _VerifyAfricaScreenState extends State<VerifyAfricaScreen>
         if (_error != null) _ErrorBox(message: _error!),
 
         _label('ID Number'),
-        _field(ctrl: _idNumberCtrl, hint: 'e.g. GHA-XXXXXXXXX-X', icon: Icons.credit_card_outlined,
+        _field(ctrl: _idNumberCtrl, hint: idInfo['hint'] as String, icon: Icons.credit_card_outlined,
           caps: TextCapitalization.characters),
         const SizedBox(height: 14),
 
@@ -368,11 +438,13 @@ class _VerifyAfricaScreenState extends State<VerifyAfricaScreen>
                 child: child!),
             );
             if (picked != null && mounted) {
-              _dobCtrl.text =
-                '${picked.year}-${picked.month.toString().padLeft(2,'0')}-${picked.day.toString().padLeft(2,'0')}';
+              final dd = picked.day.toString().padLeft(2, '0');
+              final mm = picked.month.toString().padLeft(2, '0');
+              _dobIso       = '${picked.year}-$mm-$dd';
+              _dobCtrl.text = '$dd/$mm/${picked.year}';
             }
           },
-          child: AbsorbPointer(child: _field(ctrl: _dobCtrl, hint: 'YYYY-MM-DD', icon: Icons.cake_outlined)),
+          child: AbsorbPointer(child: _field(ctrl: _dobCtrl, hint: 'DD/MM/YYYY', icon: Icons.cake_outlined)),
         ),
         const SizedBox(height: 28),
         _nextBtn('Verify My ID', _next),
@@ -543,7 +615,7 @@ class _VerifyAfricaScreenState extends State<VerifyAfricaScreen>
 
       SizedBox(width: double.infinity,
         child: ElevatedButton(
-          onPressed: () => Navigator.of(context).pop(true),
+          onPressed: _finish,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppTheme.gold, foregroundColor: AppTheme.navyDark,
             padding: const EdgeInsets.symmetric(vertical: 15),
@@ -588,8 +660,8 @@ class _VerifyAfricaScreenState extends State<VerifyAfricaScreen>
       ),
       const SizedBox(height: 10),
       TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: Text('Skip for now', style: GoogleFonts.inter(
+        onPressed: widget.onboarding ? _signOut : () => Navigator.pop(context),
+        child: Text(widget.onboarding ? 'Sign out' : 'Skip for now', style: GoogleFonts.inter(
           fontSize: 13, color: AppTheme.textMute, fontWeight: FontWeight.w300)),
       ),
     ]);

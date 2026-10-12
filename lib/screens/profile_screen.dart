@@ -9,6 +9,8 @@ import '../theme/app_theme.dart';
 import 'auth/login_screen.dart';
 import '../services/auth_routing.dart';
 import 'verify/verify_africa_screen.dart';
+import '../services/contact_helper.dart';
+import '../services/region_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -118,6 +120,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _loaded = true;
         });
     }
+  }
+
+  /// Switch between Ghana and UK style, saved to the account.
+  Future<void> _changeCountry() async {
+    final picked = await showModalBottomSheet<AppRegion>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          for (final r in AppRegion.all)
+            ListTile(
+              leading: Text(r.flag, style: const TextStyle(fontSize: 24)),
+              title: Text(r.name),
+              trailing: r.code == RegionService.current.code
+                  ? const Icon(Icons.check, color: AppTheme.green)
+                  : null,
+              onTap: () => Navigator.pop(ctx, r),
+            ),
+        ]),
+      ),
+    );
+    final uid = _user?.uid;
+    if (picked == null || uid == null) return;
+    await RegionService.set(picked);
+    final col = _role == 'staff' ? 'staff' : 'clients';
+    try {
+      await FirebaseFirestore.instance
+          .collection(col)
+          .doc(uid)
+          .update({'country': picked.code});
+    } catch (_) {}
+    if (mounted) setState(() {});
   }
 
   Future<void> _saveProfile() async {
@@ -596,16 +629,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 },
         ),
         _ActionRow(
+            icon: Icons.public,
+            label: 'Country: ${RegionService.current.flag} ${RegionService.current.name}',
+            onTap: _changeCountry),
+        _ActionRow(
             icon: Icons.lock_outline,
             label: 'Change Password',
             onTap: _changePassword),
         _ActionRow(
             icon: Icons.phone_outlined,
             label: 'Call TEHCS Support',
-            onTap: () async {
-              final uri = Uri.parse('tel:+233240699329');
-              if (await canLaunchUrl(uri)) await launchUrl(uri);
-            }),
+            onTap: () => ContactHelper.callOffice(context)),
         _ActionRow(
             icon: Icons.chat_outlined,
             label: 'WhatsApp Support',

@@ -3,9 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import '../../theme/app_theme.dart';
+import '../../services/contact_helper.dart';
 
 class StaffChatScreen extends StatefulWidget {
   const StaffChatScreen({super.key});
@@ -119,10 +119,7 @@ class _StaffChatScreenState extends State<StaffChatScreen> {
               ]),
             ])),
             GestureDetector(
-              onTap: () async {
-                final uri = Uri.parse('tel:+233240699329');
-                if (await canLaunchUrl(uri)) await launchUrl(uri);
-              },
+              onTap: () => ContactHelper.callOffice(context),
               child: Container(width: 38, height: 38,
                 decoration: BoxDecoration(color: Colors.white.withOpacity(.1), borderRadius: BorderRadius.circular(10)),
                 child: const Icon(Icons.phone_outlined, color: Colors.white70, size: 18)),

@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../theme/app_theme.dart';
 import '../auth/login_screen.dart';
 import '../../widgets/animations.dart';
+import '../../services/contact_helper.dart';
 
 class StaffProfileScreen extends StatefulWidget {
   const StaffProfileScreen({super.key});
@@ -313,10 +314,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
         backgroundColor: AppTheme.green, behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
     }),
-    _ActionTile(icon: Icons.phone_outlined, label: 'Call Office', onTap: () async {
-      final uri = Uri.parse('tel:+233240699329');
-      if (await canLaunchUrl(uri)) await launchUrl(uri);
-    }),
+    _ActionTile(icon: Icons.phone_outlined, label: 'Call Office', onTap: () => ContactHelper.callOffice(context)),
     _ActionTile(icon: Icons.chat_outlined, label: 'WhatsApp Office', onTap: () async {
       final uri = Uri.parse('https://wa.me/233240699329');
       if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);

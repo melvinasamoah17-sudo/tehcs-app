@@ -2,23 +2,22 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../theme/app_theme.dart';
 import '../main_screen.dart';
+import '../../services/auth_routing.dart';
 import 'login_screen.dart';
 
 // OTP screen expires after this many minutes of inactivity
-const _kSessionMinutes = 10;
+const _kSessionMinutes = 15;
+const _kLen = 6;
 
+/// Email OTP verification. A 6-digit code is emailed by the `sendOtp`
+/// Cloud Function and checked server-side by `verifyOtp`.
 class VerifyEmailScreen extends StatefulWidget {
   final String role;
-  final String? phoneVerificationId;
-
-  const VerifyEmailScreen({
-    super.key,
-    this.role = 'customer',
-    this.phoneVerificationId,
-  });
+  const VerifyEmailScreen({super.key, this.role = 'customer'});
 
   @override
   State<VerifyEmailScreen> createState() => _VerifyEmailScreenState();
@@ -27,8 +26,9 @@ class VerifyEmailScreen extends StatefulWidget {
 class _VerifyEmailScreenState extends State<VerifyEmailScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   final List<TextEditingController> _ctrs =
-      List.generate(4, (_) => TextEditingController());
-  final List<FocusNode> _foci = List.generate(4, (_) => FocusNode());
+      List.generate(_kLen, (_) => TextEditingController());
+  final List<FocusNode> _foci = List.generate(_kLen, (_) => FocusNode());
+  final _fn = FirebaseFunctions.instance;
 
   bool _checking = false;
   bool _sending = false;
@@ -36,11 +36,8 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
   String? _message;
   bool _isError = false;
 
-  Timer? _autoCheck;
   int _resendCooldown = 0;
   Timer? _cooldownTimer;
-
-  // Session expiry
   final DateTime _openedAt = DateTime.now();
 
   late List<AnimationController> _cardCtrs;
@@ -53,14 +50,12 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
   late Animation<double> _textFade;
   late Animation<Offset> _textSlide;
 
-  bool get _isPhoneMode => widget.phoneVerificationId != null;
-
   @override
   void initState() {
     super.initState();
 
     _cardCtrs = List.generate(
-        4,
+        _kLen,
         (_) => AnimationController(
             vsync: this, duration: const Duration(milliseconds: 280)));
     _cardTilts = _cardCtrs
@@ -85,13 +80,11 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
     _textSlide = Tween<Offset>(begin: const Offset(0, 0.4), end: Offset.zero)
         .animate(CurvedAnimation(parent: _textCtrl, curve: Curves.easeOut));
 
-    if (!_isPhoneMode) {
-      _autoCheck =
-          Timer.periodic(const Duration(seconds: 5), (_) => _silentCheck());
-    }
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => _foci[0].requestFocus());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _foci[0].requestFocus();
+      _sendCode(first: true);
+    });
   }
 
   @override
@@ -102,28 +95,20 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
     for (final c in _cardCtrs) c.dispose();
     _checkCtrl.dispose();
     _textCtrl.dispose();
-    _autoCheck?.cancel();
     _cooldownTimer?.cancel();
     super.dispose();
   }
 
-  // Called when app comes back to foreground
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && !_verified) {
-      _checkExpiry();
-    }
-  }
-
-  void _checkExpiry() {
-    final elapsed = DateTime.now().difference(_openedAt);
-    if (elapsed.inMinutes >= _kSessionMinutes) {
-      _expireSession();
+      if (DateTime.now().difference(_openedAt).inMinutes >= _kSessionMinutes) {
+        _expireSession();
+      }
     }
   }
 
   Future<void> _expireSession() async {
-    _autoCheck?.cancel();
     await FirebaseAuth.instance.signOut();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
@@ -132,40 +117,50 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
     );
   }
 
-  Future<void> _silentCheck() async {
-    try {
-      await FirebaseAuth.instance.currentUser?.reload();
-      if (FirebaseAuth.instance.currentUser?.emailVerified == true) {
-        _autoCheck?.cancel();
-        if (mounted) _showVerified();
-      }
-    } catch (_) {}
-  }
-
   String get _code => _ctrs.map((c) => c.text).join();
+
+  void _clearBoxes() {
+    for (final c in _ctrs) c.clear();
+    for (final ctrl in _cardCtrs) ctrl.reset();
+    _foci[0].requestFocus();
+  }
 
   void _onChanged(int index, String val) {
     if (val.length > 1) {
       final digits = val.replaceAll(RegExp(r'\D'), '');
-      for (int i = 0; i < 4 && i < digits.length; i++) {
-        _ctrs[i].text = digits[i];
-        _animateCard(i);
+      if (digits.length >= _kLen) {
+        // Pasted a full code.
+        for (int i = 0; i < _kLen; i++) {
+          _ctrs[i].text = digits[i];
+          _animateCard(i);
+        }
+        _foci[_kLen - 1].requestFocus();
+      } else if (digits.isNotEmpty) {
+        // Typed over a filled box: keep the newest digit.
+        _ctrs[index].text = digits[digits.length - 1];
+        _animateCard(index);
+        if (index < _kLen - 1) _foci[index + 1].requestFocus();
+      } else {
+        _ctrs[index].clear();
       }
-      _foci[digits.length >= 4 ? 3 : digits.length - 1].requestFocus();
-      if (digits.length >= 4)
+      setState(() {});
+      if (_code.length == _kLen) {
         Future.delayed(const Duration(milliseconds: 200), _verify);
+      }
       return;
     }
     if (val.isNotEmpty) {
       _animateCard(index);
-      if (index < 3)
+      if (index < _kLen - 1) {
         Future.delayed(const Duration(milliseconds: 80), () {
           if (mounted) _foci[index + 1].requestFocus();
         });
+      }
     }
     setState(() {});
-    if (_code.length == 4)
+    if (_code.length == _kLen) {
       Future.delayed(const Duration(milliseconds: 200), _verify);
+    }
   }
 
   void _onKey(int index, KeyEvent event) {
@@ -181,11 +176,19 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
 
   void _animateCard(int index) => _cardCtrs[index].forward(from: 0);
 
+  String _fnError(Object e, String fallback) {
+    if (e is FirebaseFunctionsException) {
+      return e.message ?? fallback;
+    }
+    return fallback;
+  }
+
   Future<void> _verify() async {
+    if (_checking || _verified) return;
     final code = _code;
-    if (code.length < 4) {
+    if (code.length < _kLen) {
       setState(() {
-        _message = 'Please enter all 4 digits.';
+        _message = 'Please enter all $_kLen digits.';
         _isError = true;
       });
       return;
@@ -193,37 +196,21 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
     setState(() {
       _checking = true;
       _message = null;
+      _isError = false;
     });
     try {
-      if (_isPhoneMode) {
-        final cred = PhoneAuthProvider.credential(
-            verificationId: widget.phoneVerificationId!, smsCode: code);
-        await FirebaseAuth.instance.signInWithCredential(cred);
-        _showVerified();
-      } else {
-        await FirebaseAuth.instance.currentUser?.reload();
-        if (FirebaseAuth.instance.currentUser?.emailVerified == true) {
-          _showVerified();
-        } else {
-          setState(() {
-            _message = 'Not verified yet. Check your inbox or tap Resend.';
-            _isError = true;
-          });
-          for (final c in _ctrs) c.clear();
-          for (final ctrl in _cardCtrs) ctrl.reset();
-          _foci[0].requestFocus();
-        }
-      }
-    } on FirebaseAuthException catch (e) {
+      await _fn.httpsCallable('verifyOtp').call({'code': code});
+      // Refresh so emailVerified/token reflect the server-side change.
+      await FirebaseAuth.instance.currentUser?.reload();
+      await FirebaseAuth.instance.currentUser?.getIdToken(true);
+      _showVerified();
+    } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _message = e.code == 'invalid-verification-code'
-            ? 'Incorrect code. Try again.'
-            : 'Verification failed.';
+        _message = _fnError(e, 'Verification failed. Check your connection.');
         _isError = true;
       });
-      for (final c in _ctrs) c.clear();
-      for (final ctrl in _cardCtrs) ctrl.reset();
-      _foci[0].requestFocus();
+      _clearBoxes();
     } finally {
       if (mounted) setState(() => _checking = false);
     }
@@ -240,48 +227,61 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
     _textCtrl.forward();
   }
 
-  void _goHome() {
+  Future<void> _goHome() async {
+    final user = FirebaseAuth.instance.currentUser;
+    final screen = user != null
+        ? await resolveHomeScreen(user)
+        : MainScreen(role: widget.role);
+    if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => MainScreen(role: widget.role)),
+      MaterialPageRoute(builder: (_) => screen),
       (_) => false,
     );
   }
 
-  Future<void> _resend() async {
+  Future<void> _sendCode({bool first = false}) async {
     if (_resendCooldown > 0 || _sending) return;
     setState(() {
       _sending = true;
       _message = null;
     });
     try {
-      if (!_isPhoneMode)
-        await FirebaseAuth.instance.currentUser?.sendEmailVerification();
+      final res = await _fn.httpsCallable('sendOtp').call();
+      final data = res.data;
+      if (data is Map && data['alreadyVerified'] == true) {
+        _showVerified();
+        return;
+      }
+      _startCooldown(45);
       setState(() {
-        _resendCooldown = 60;
-        _message = 'Code sent!';
+        _message = first ? null : 'New code sent!';
         _isError = false;
       });
-      _cooldownTimer?.cancel();
-      _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-        if (!mounted) {
-          t.cancel();
-          return;
-        }
-        setState(() => _resendCooldown--);
-        if (_resendCooldown <= 0) t.cancel();
-      });
-    } catch (_) {
+    } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _message = 'Failed to resend. Try again.';
+        _message = _fnError(e, 'Could not send the code. Try again.');
         _isError = true;
       });
     }
     if (mounted) setState(() => _sending = false);
   }
 
+  void _startCooldown(int seconds) {
+    _resendCooldown = seconds;
+    _cooldownTimer?.cancel();
+    _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() => _resendCooldown--);
+      if (_resendCooldown <= 0) t.cancel();
+    });
+  }
+
   String get _maskedContact {
-    final user = FirebaseAuth.instance.currentUser;
-    final email = user?.email ?? '';
+    final email = FirebaseAuth.instance.currentUser?.email ?? '';
     final parts = email.split('@');
     if (parts.length == 2 && parts[0].length > 2) {
       return '${parts[0].substring(0, 2)}${'•' * (parts[0].length - 2)}@${parts[1]}';
@@ -292,7 +292,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D1117),
+      backgroundColor: AppTheme.offWhite,
       body: SafeArea(
         child: Column(children: [
           Padding(
@@ -300,7 +300,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
             child: Row(children: [
               IconButton(
                 icon: const Icon(Icons.arrow_back_ios,
-                    color: Colors.white54, size: 18),
+                    color: AppTheme.textMid, size: 18),
                 onPressed: () => Navigator.pop(context),
               ),
             ]),
@@ -308,7 +308,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
           Expanded(
             child: Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 400),
                   child: _verified ? _buildVerified() : _buildEntry(),
@@ -320,13 +320,9 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
             Padding(
               padding: const EdgeInsets.only(bottom: 20),
               child: Text(
-                _isPhoneMode
-                    ? 'Enter the 4-digit SMS code.'
-                    : 'Click the email link, then tap Verify.',
+                'Type the code, or paste it. The email may take a minute — check spam too.',
                 style: GoogleFonts.nunito(
-                    fontSize: 11,
-                    color: Colors.white24,
-                    fontWeight: FontWeight.w300),
+                    fontSize: 11, color: AppTheme.textMute),
                 textAlign: TextAlign.center,
               ),
             ),
@@ -346,68 +342,69 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
                 width: 32,
                 height: 4,
                 decoration: BoxDecoration(
-                    color: Colors.white12,
+                    color: AppTheme.border,
                     borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 28),
+            const SizedBox(height: 26),
             Container(
               width: 56,
               height: 56,
               decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(.06),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white.withOpacity(.1))),
-              child: Center(
-                  child: Icon(
-                      _isPhoneMode ? Icons.smartphone : Icons.email_outlined,
-                      size: 26,
-                      color: Colors.white)),
+                  color: AppTheme.gold.withOpacity(.14),
+                  shape: BoxShape.circle),
+              child: const Center(
+                  child: Icon(Icons.mark_email_unread_outlined,
+                      size: 26, color: AppTheme.goldDark)),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
             Text('Enter your code',
                 style: GoogleFonts.nunito(
                     fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.navy,
                     letterSpacing: -0.3)),
             const SizedBox(height: 8),
             Text(
-              _isPhoneMode
-                  ? 'We texted a 4-digit code to your phone.'
-                  : 'We sent a 4-digit code to\n$_maskedContact',
+              'We emailed a $_kLen-digit code to\n$_maskedContact',
               textAlign: TextAlign.center,
               style: GoogleFonts.nunito(
-                  fontSize: 13,
-                  color: Colors.white38,
-                  fontWeight: FontWeight.w300,
-                  height: 1.6),
+                  fontSize: 13, color: AppTheme.textMid, height: 1.6),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 28),
 
-            // 4 OTP boxes
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                  4,
-                  (i) => Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        child: AnimatedBuilder(
-                          animation: _cardCtrs[i],
-                          builder: (_, child) => Transform(
-                            alignment: Alignment.bottomCenter,
-                            transform: Matrix4.identity()
-                              ..setEntry(3, 2, 0.001)
-                              ..rotateX(_cardTilts[i].value)
-                              ..scale(_cardScales[i].value),
-                            child: child,
-                          ),
-                          child: _OtpBox(
-                              controller: _ctrs[i],
-                              focusNode: _foci[i],
-                              onChanged: (v) => _onChanged(i, v),
-                              onKey: (e) => _onKey(i, e),
-                              hasError: _isError),
-                        ),
-                      )),
+            // OTP boxes, or the fanned "hand of cards" while checking.
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: _checking
+                  ? _CardFan(key: const ValueKey('fan'), digits: _code)
+                  : Row(
+                      key: const ValueKey('boxes'),
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(
+                          _kLen,
+                          (i) => Flexible(
+                                child: Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 3),
+                                  child: AnimatedBuilder(
+                                    animation: _cardCtrs[i],
+                                    builder: (_, child) => Transform(
+                                      alignment: Alignment.bottomCenter,
+                                      transform: Matrix4.identity()
+                                        ..setEntry(3, 2, 0.001)
+                                        ..rotateX(_cardTilts[i].value)
+                                        ..scale(_cardScales[i].value),
+                                      child: child,
+                                    ),
+                                    child: _OtpBox(
+                                        controller: _ctrs[i],
+                                        focusNode: _foci[i],
+                                        onChanged: (v) => _onChanged(i, v),
+                                        onKey: (e) => _onKey(i, e),
+                                        hasError: _isError),
+                                  ),
+                                ),
+                              )),
+                    ),
             ),
 
             if (_message != null) ...[
@@ -416,45 +413,42 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
                   textAlign: TextAlign.center,
                   style: GoogleFonts.nunito(
                       fontSize: 12,
-                      color:
-                          _isError ? AppTheme.red : const Color(0xFF2ECC71))),
+                      fontWeight: FontWeight.w600,
+                      color: _isError ? AppTheme.red : AppTheme.green)),
             ],
-            const SizedBox(height: 28),
+            const SizedBox(height: 24),
 
-            if (_checking)
-              const SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white54))
-            else
-              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Text("Didn't get a code?  ",
-                    style: GoogleFonts.nunito(
-                        color: Colors.white38, fontSize: 13)),
-                GestureDetector(
-                  onTap: _resendCooldown == 0 ? _resend : null,
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text("Didn't get a code?  ",
+                  style: GoogleFonts.nunito(
+                      color: AppTheme.textMid, fontSize: 13)),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _resendCooldown == 0 ? _sendCode : null,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
                   child: _sending
                       ? const SizedBox(
                           width: 14,
                           height: 14,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white54))
+                              strokeWidth: 2, color: AppTheme.gold))
                       : _resendCooldown > 0
                           ? Text('${_resendCooldown}s',
                               style: GoogleFonts.nunito(
                                   fontSize: 13,
-                                  color: Colors.white24,
-                                  fontWeight: FontWeight.w600))
+                                  color: AppTheme.textMute,
+                                  fontWeight: FontWeight.w700))
                           : Text('Resend',
                               style: GoogleFonts.nunito(
                                   fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white)),
+                                  fontWeight: FontWeight.w800,
+                                  color: AppTheme.goldDark)),
                 ),
-              ]),
+              ),
+            ]),
           ])),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           GestureDetector(
             onTap: () async {
               await FirebaseAuth.instance.signOut();
@@ -466,9 +460,9 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
             child: Text('Use a different account',
                 style: GoogleFonts.nunito(
                     fontSize: 12,
-                    color: Colors.white24,
+                    color: AppTheme.textMid,
                     decoration: TextDecoration.underline,
-                    decorationColor: Colors.white24)),
+                    decorationColor: AppTheme.textMute)),
           ),
         ]);
   }
@@ -487,19 +481,17 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
                     child: Text('Verified',
                         style: GoogleFonts.nunito(
                             fontSize: 22,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white)))),
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.green)))),
             const SizedBox(height: 4),
             SlideTransition(
                 position: _textSlide,
                 child: FadeTransition(
                     opacity: _textFade,
-                    child: Text('Setting up your session...',
+                    child: Text('Your email is confirmed.',
                         style: GoogleFonts.nunito(
-                            fontSize: 12,
-                            color: Colors.white38,
-                            fontWeight: FontWeight.w300)))),
-            const SizedBox(height: 40),
+                            fontSize: 12, color: AppTheme.textMid)))),
+            const SizedBox(height: 36),
             ScaleTransition(
                 scale: _checkScale,
                 child: FadeTransition(
@@ -509,33 +501,15 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
                     height: 82,
                     decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        border: Border.all(
-                            color: const Color(0xFF2ECC71), width: 2.5)),
+                        color: AppTheme.green.withOpacity(.08),
+                        border:
+                            Border.all(color: AppTheme.green, width: 2.5)),
                     child: const Center(
                         child: Icon(Icons.check_rounded,
-                            color: Color(0xFF2ECC71), size: 42)),
+                            color: AppTheme.green, size: 42)),
                   ),
                 )),
-            const SizedBox(height: 18),
-            ScaleTransition(
-              scale: _checkScale,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                decoration: BoxDecoration(
-                    color: const Color(0xFF2ECC71).withOpacity(.1),
-                    borderRadius: BorderRadius.circular(100),
-                    border: Border.all(
-                        color: const Color(0xFF2ECC71).withOpacity(.3))),
-                child: Text('Verified',
-                    style: GoogleFonts.barlowCondensed(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFF2ECC71),
-                        letterSpacing: 0.5)),
-              ),
-            ),
-            const SizedBox(height: 36),
+            const SizedBox(height: 32),
             FadeTransition(
               opacity: _textFade,
               child: SizedBox(
@@ -543,7 +517,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
                 child: ElevatedButton(
                   onPressed: _goHome,
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2ECC71),
+                      backgroundColor: AppTheme.navy,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 15),
                       shape: RoundedRectangleBorder(
@@ -568,13 +542,73 @@ class _Card extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(26, 30, 26, 30),
+        padding: const EdgeInsets.fromLTRB(20, 28, 20, 26),
         decoration: BoxDecoration(
-            color: const Color(0xFF161B22),
+            color: AppTheme.white,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withOpacity(.08))),
+            border: Border.all(color: AppTheme.border),
+            boxShadow: [
+              BoxShadow(
+                  color: AppTheme.navy.withOpacity(.07),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10))
+            ]),
         child: child,
       );
+}
+
+/// The typed digits fan out like a hand of cards while the code is checked.
+class _CardFan extends StatelessWidget {
+  final String digits;
+  const _CardFan({super.key, required this.digits});
+
+  @override
+  Widget build(BuildContext context) {
+    final n = digits.length;
+    return SizedBox(
+      height: 96,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: 1),
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeOutBack,
+        builder: (_, t, __) => Stack(
+          alignment: Alignment.center,
+          clipBehavior: Clip.none,
+          children: List.generate(n, (i) {
+            final mid = (n - 1) / 2;
+            final off = i - mid;
+            return Transform.translate(
+              offset: Offset(off * 26 * t, off.abs() * off.abs() * 2.5 * t),
+              child: Transform.rotate(
+                angle: off * 0.13 * t,
+                child: Container(
+                  width: 46,
+                  height: 66,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppTheme.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppTheme.gold, width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                          color: AppTheme.navy.withOpacity(.14),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3))
+                    ],
+                  ),
+                  child: Text(digits[i],
+                      style: GoogleFonts.nunito(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
+                          color: AppTheme.navy)),
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
 }
 
 class _OtpBox extends StatefulWidget {
@@ -595,56 +629,66 @@ class _OtpBox extends StatefulWidget {
 
 class _OtpBoxState extends State<_OtpBox> {
   bool _focused = false;
+  late final FocusNode _keyNode = FocusNode(skipTraversal: true);
+
+  void _onFocus() {
+    if (mounted) setState(() => _focused = widget.focusNode.hasFocus);
+  }
+
   @override
   void initState() {
     super.initState();
-    widget.focusNode.addListener(() {
-      if (mounted) setState(() => _focused = widget.focusNode.hasFocus);
-    });
+    widget.focusNode.addListener(_onFocus);
+  }
+
+  @override
+  void dispose() {
+    widget.focusNode.removeListener(_onFocus);
+    _keyNode.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final filled = widget.controller.text.isNotEmpty;
+    final borderColor = widget.hasError
+        ? AppTheme.red
+        : _focused
+            ? AppTheme.gold
+            : filled
+                ? AppTheme.navy.withOpacity(.35)
+                : AppTheme.border;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
-      width: 64,
-      height: 74,
+      constraints: const BoxConstraints(maxWidth: 50),
+      height: 62,
       decoration: BoxDecoration(
         color: _focused
-            ? Colors.white.withOpacity(.08)
+            ? AppTheme.gold.withOpacity(.08)
             : filled
-                ? const Color(0xFF21262D)
-                : const Color(0xFF1C2128),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-            color: widget.hasError
-                ? AppTheme.red.withOpacity(.7)
-                : _focused
-                    ? Colors.white.withOpacity(.5)
-                    : filled
-                        ? Colors.white.withOpacity(.2)
-                        : Colors.white.withOpacity(.08),
-            width: _focused ? 1.5 : 1),
+                ? AppTheme.light
+                : AppTheme.offWhite,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor, width: _focused ? 2 : 1.2),
       ),
       child: KeyboardListener(
-        focusNode: FocusNode(),
+        focusNode: _keyNode,
         onKeyEvent: widget.onKey,
         child: TextField(
           controller: widget.controller,
           focusNode: widget.focusNode,
           textAlign: TextAlign.center,
           keyboardType: TextInputType.number,
-          maxLength: 4,
+          maxLength: _kLen,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           onChanged: widget.onChanged,
           style: GoogleFonts.nunito(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+              color: AppTheme.navy,
               height: 1),
-          cursorColor: Colors.white54,
-          cursorWidth: 1.5,
+          cursorColor: AppTheme.gold,
+          cursorWidth: 1.8,
           decoration: const InputDecoration(
               counterText: '',
               border: InputBorder.none,

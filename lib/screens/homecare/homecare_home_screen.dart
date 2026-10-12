@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../theme/app_theme.dart';
 import '../booking_screen.dart';
+import '../../services/region_service.dart';
 
 IconData _serviceIcon(String name) => switch (name) {
   'Personal Care'          => Icons.favorite,
@@ -43,7 +44,7 @@ class _HomecareHomeScreenState extends State<HomecareHomeScreen> {
   Future<void> _triggerSOS() async {
     setState(() => _sosPressed = true);
     // Call emergency line
-    final uri = Uri.parse('tel:+233240699329');
+    final uri = Uri.parse('tel:${RegionService.current.office}');
     if (await canLaunchUrl(uri)) await launchUrl(uri);
     await Future.delayed(const Duration(seconds: 3));
     if (mounted) setState(() => _sosPressed = false);

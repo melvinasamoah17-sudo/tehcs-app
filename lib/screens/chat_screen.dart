@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
 import '../models/chat_message.dart';
+import '../services/contact_helper.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -234,10 +235,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     ]),
                   ])),
               GestureDetector(
-                onTap: () async {
-                  final uri = Uri.parse('tel:+233240699329');
-                  if (await canLaunchUrl(uri)) await launchUrl(uri);
-                },
+                onTap: () => ContactHelper.callOffice(context),
                 child: Container(
                     width: 38,
                     height: 38,

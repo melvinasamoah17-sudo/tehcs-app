@@ -52,6 +52,24 @@ service cloud.firestore {
       allow read, update: if isStaff() || (request.auth != null && (resource == null || resource.data.uid == request.auth.uid || docId == request.auth.uid));
     }
 
+    // 5a. Phone push tokens (each user writes only their own)
+    match /device_tokens/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // 5b. Admin notifications (staff accept a job / clock in)
+    match /notifications/{docId} {
+      allow create: if isStaff();
+      allow read, update, delete: if request.auth != null &&
+        request.auth.token.email == 'twitchempireinfo@gmail.com';
+    }
+
+    // 5c. Identity verification log (written by the user after VerifyAfrica)
+    match /verifications/{docId} {
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow read, update, delete: if isStaff();
+    }
+
     // 6. Chats (Support messages)
     match /chats/{docId} {
       allow create: if request.auth != null;

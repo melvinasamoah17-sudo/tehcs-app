@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/animations.dart';
+import '../../services/admin_notify.dart';
 
 class StaffJobsScreen extends StatefulWidget {
   const StaffJobsScreen({super.key});
@@ -572,6 +573,12 @@ class _StaffJobCard extends StatelessWidget {
           'acceptedAt':         FieldValue.serverTimestamp(),
         });
       });
+      notifyAdmin(
+        type:  'job_accepted',
+        title: 'Booking accepted',
+        body:  '${myName.isEmpty ? 'A staff member' : myName} accepted ${data['service'] ?? 'a booking'} for ${data['clientName'] ?? 'a client'} (${data['date'] ?? 'TBD'} ${data['time'] ?? ''}).',
+        extra: {'bookingId': docId, 'staffName': myName, 'category': data['category'] ?? ''},
+      );
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: const Row(mainAxisSize: MainAxisSize.min, children: [

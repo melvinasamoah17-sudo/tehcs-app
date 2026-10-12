@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../theme/app_theme.dart';
+import '../services/region_service.dart';
 
 class BookingScreen extends StatefulWidget {
   final String service;
@@ -86,8 +87,10 @@ class _BookingScreenState extends State<BookingScreen> {
     setState(() { _loading = true; _error = null; });
 
     final user     = FirebaseAuth.instance.currentUser!;
-    final name     = user.displayName ?? user.email!.split('@').first;
-    final email    = user.email!;
+    final email    = user.email ?? '';
+    final name     = (user.displayName?.isNotEmpty ?? false)
+        ? user.displayName!
+        : (email.isNotEmpty ? email.split('@').first : 'Client');
     final date     = _dateCtrl.text;
     final time     = _timeCtrl.text.isEmpty ? 'Flexible' : _timeCtrl.text;
     final address  = _addrCtrl.text.trim();
@@ -284,9 +287,9 @@ class _BookingScreenState extends State<BookingScreen> {
           TextFormField(
             controller: _phoneCtrl,
             keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(
-              hintText: '+233 or +44...',
-              prefixIcon: Icon(Icons.phone_outlined, size: 20),
+            decoration: InputDecoration(
+              hintText: '+${RegionService.current.dial} ${RegionService.current.phoneHint}',
+              prefixIcon: const Icon(Icons.phone_outlined, size: 20),
             ),
             validator: (v) => v == null || v.trim().isEmpty ? 'Please enter your phone number' : null,
           ),

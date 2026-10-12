@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:convert';
 import '../../theme/app_theme.dart';
+import '../../services/region_service.dart';
 
 // ─────────────────────────────────────────
 // OpenStreetMap + Nominatim
@@ -25,8 +26,8 @@ class MapPickerScreen extends StatefulWidget {
 class _MapPickerScreenState extends State<MapPickerScreen> {
   final _mapCtrl = MapController();
 
-  // Default: Accra, Ghana
-  LatLng _center = const LatLng(5.6037, -0.1870);
+  // Default: Accra or London, depending on the user's country
+  LatLng _center = RegionService.current.mapCentre;
 
   String _address  = 'Move the map to select location';
   bool   _loading  = false;
@@ -89,10 +90,11 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
           addr['road'] ?? addr['pedestrian'] ?? addr['path'],
           addr['suburb'] ?? addr['neighbourhood'] ?? addr['quarter'],
           addr['city'] ?? addr['town'] ?? addr['village'] ?? addr['county'],
+          addr['postcode'],
           addr['state'],
           addr['country'],
         ].where((s) => s != null && s.toString().isNotEmpty).toList();
-        setState(() => _address = parts.take(4).join(', '));
+        setState(() => _address = parts.take(5).join(', '));
       } else {
         setState(() => _address =
           '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}');

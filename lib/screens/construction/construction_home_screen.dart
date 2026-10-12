@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../../theme/app_theme.dart';
 import '../booking_screen.dart';
+import '../../services/region_service.dart';
 
 IconData _constructionServiceIcon(String name) => switch (name) {
   'Plumbing'                 => Icons.plumbing_outlined,
@@ -209,7 +210,7 @@ class _ConstructionHomeScreenState extends State<ConstructionHomeScreen> {
 
               _label('Budget (optional)'),
               TextField(controller: budgetCtrl, keyboardType: TextInputType.number,
-                decoration: _deco('e.g. £500–£1000')),
+                decoration: _deco(RegionService.current.budgetHint)),
               const SizedBox(height: 14),
 
               _label('Upload Photos (optional)'),

@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>TEHCS uses your location to set the app up for Ghana or the UK and to pick your service address.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>TEHCS uses the camera for the selfie step of identity verification.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>TEHCS lets you choose a profile photo from your library.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

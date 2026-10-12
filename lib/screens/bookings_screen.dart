@@ -8,6 +8,7 @@ import '../theme/app_theme.dart';
 import '../models/booking.dart';
 import 'booking_screen.dart';
 import '../widgets/animations.dart';
+import '../services/contact_helper.dart';
 
 class BookingsScreen extends StatefulWidget {
   const BookingsScreen({super.key});
@@ -590,7 +591,7 @@ class _BookingCard extends StatelessWidget {
             child: Row(children: [
               Expanded(
                   child: OutlinedButton.icon(
-                onPressed: () => _callTehcs(),
+                onPressed: () => ContactHelper.callOffice(context),
                 icon: const Icon(Icons.phone_outlined, size: 16),
                 label: Text('Call',
                     style: GoogleFonts.poppins(
@@ -663,7 +664,7 @@ class _BookingCard extends StatelessWidget {
   void _handleAction(BuildContext context, String val) {
     switch (val) {
       case 'call':
-        _callTehcs();
+        ContactHelper.callOffice(context);
         break;
       case 'whatsapp':
         _whatsApp();
@@ -672,11 +673,6 @@ class _BookingCard extends StatelessWidget {
         _showCancelDialog(context);
         break;
     }
-  }
-
-  Future<void> _callTehcs() async {
-    final uri = Uri.parse('tel:+233240699329');
-    if (await canLaunchUrl(uri)) await launchUrl(uri);
   }
 
   Future<void> _whatsApp() async {

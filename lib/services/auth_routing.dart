@@ -4,8 +4,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../screens/auth/verify_email_screen.dart';
 import '../screens/main_screen.dart';
 import '../screens/admin_panel.dart';
+import '../screens/verify/verify_africa_screen.dart';
+import 'region_service.dart';
 
 const String kPrimaryAdminEmail = 'twitchempireinfo@gmail.com';
+
+/// Customers must verify their identity before they can use the app.
+const bool kRequireIdVerification = true;
 
 enum UserRole { client, staff, admin }
 
@@ -29,12 +34,21 @@ Future<Widget> resolveHomeScreen(User user) async {
   final role = await resolveUserRole(refreshed);
 
   if (role == UserRole.admin) return const AdminPanel(mode: 'admin');
-  if (role == UserRole.staff) return const AdminPanel(mode: 'staff');
+  final db = FirebaseFirestore.instance;
+  if (role == UserRole.staff) {
+    await RegionService.syncFromProfile(db.collection('staff').doc(refreshed.uid));
+    return const AdminPanel(mode: 'staff');
+  }
 
   // For Google/Apple sign-in users — email is auto-verified by provider
   // Auto-create client profile in Firestore if first time
   if (refreshed.emailVerified || _isSocialProvider(refreshed)) {
     await _ensureClientProfile(refreshed);
+    final ref = db.collection('clients').doc(refreshed.uid);
+    await RegionService.syncFromProfile(ref);
+    if (kRequireIdVerification && !await _isIdVerified(ref)) {
+      return const VerifyAfricaScreen(role: 'customer', onboarding: true);
+    }
     return const MainScreen(role: 'customer');
   }
 
@@ -44,7 +58,18 @@ Future<Widget> resolveHomeScreen(User user) async {
 
 bool _isSocialProvider(User user) {
   return user.providerData
-      .any((p) => p.providerId == 'google.com' || p.providerId == 'apple.com');
+      .any((p) => p.providerId == 'google.com' ||
+      p.providerId == 'apple.com' ||
+      p.providerId == 'phone');
+}
+
+Future<bool> _isIdVerified(DocumentReference<Map<String, dynamic>> ref) async {
+  try {
+    final d = (await ref.get()).data() ?? {};
+    return d['id_verified'] == true || d['liveness_verified'] == true;
+  } catch (_) {
+    return false;
+  }
 }
 
 Future<void> _ensureClientProfile(User user) async {
@@ -58,6 +83,7 @@ Future<void> _ensureClientProfile(User user) async {
         'email': user.email ?? '',
         'phone': user.phoneNumber ?? '',
         'role': 'customer',
+        'country': RegionService.current.code,
         'provider': user.providerData.firstOrNull?.providerId ?? 'email',
         'createdAt': FieldValue.serverTimestamp(),
       });

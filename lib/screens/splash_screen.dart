@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../theme/app_theme.dart';
 import '../services/auth_routing.dart';
+import '../services/region_service.dart';
 import 'auth/login_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -27,7 +28,11 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _navigate() async {
-    await Future.delayed(const Duration(seconds: 2));
+    // Work out Ghana / UK mode while the logo shows
+    await Future.wait([
+      Future.delayed(const Duration(seconds: 2)),
+      RegionService.init(),
+    ]);
     if (!mounted) return;
     try {
       final user = FirebaseAuth.instance.currentUser;

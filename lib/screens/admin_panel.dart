@@ -9,6 +9,8 @@ import '../services/session_control.dart';
 import 'admin_messages_screen.dart';
 import 'auth/login_screen.dart';
 import '../widgets/animations.dart';
+import '../widgets/admin_notification_bell.dart';
+import '../services/push_service.dart';
 
 class AdminPanel extends StatefulWidget {
   final String mode;
@@ -51,6 +53,7 @@ class _AdminPanelState extends State<AdminPanel>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _tabs = TabController(length: _isAdmin ? 7 : 4, vsync: this);
+    PushService.init(); // phone push notifications
   }
 
   @override
@@ -127,6 +130,7 @@ class _AdminPanelState extends State<AdminPanel>
                     letterSpacing: 0.5)),
           ]),
           actions: [
+            if (_isAdmin) const AdminNotificationBell(),
             IconButton(
               icon: const Icon(Icons.logout_rounded,
                   color: Colors.white70, size: 20),
@@ -927,7 +931,7 @@ class _StaffTab extends StatelessWidget {
       'Builder',
       'Other'
     ];
-    final categories = ['Cleaning', 'Home Care', 'Non-Medical', 'Construction'];
+    final categories = ['Cleaning', 'Home Care', 'Medical', 'Non-Medical', 'Construction'];
 
     showModalBottomSheet(
       context: context,
