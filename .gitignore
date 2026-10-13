@@ -70,3 +70,6 @@ secrets.json
 
 # Azurite local storage emulator data
 __azurite_db_*.json
+
+# Cloud Functions dependencies
+functions/node_modules/

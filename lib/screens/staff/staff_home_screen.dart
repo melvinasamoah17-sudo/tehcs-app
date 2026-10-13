@@ -5,6 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import '../../theme/app_theme.dart';
+import '../../services/admin_notify.dart';
+import '../../services/contact_helper.dart';
 
 class StaffHomeScreen extends StatefulWidget {
   const StaffHomeScreen({super.key});
@@ -76,11 +78,36 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
           _loaded     = true;
         });
       } else {
-        if (mounted) setState(() => _loaded = true);
+        final claimed = await _claimProfile(uid);
+        if (mounted) {
+          setState(() {
+            if (claimed != null) _staffData = claimed;
+            _loaded = true;
+          });
+        }
       }
     } catch (_) {
       if (mounted) setState(() => _loaded = true);
     }
+  }
+
+  // Admin adds staff with an auto-ID record, but the app looks staff up by
+  // their sign-in uid. First time a staff member opens the app, copy their
+  // profile onto staff/{uid} (so clock in/out, availability etc. work) and
+  // remove the placeholder.
+  Future<Map<String, dynamic>?> _claimProfile(String uid) async {
+    final email = _user?.email?.toLowerCase();
+    if (email == null) return null;
+    final db = FirebaseFirestore.instance;
+    final byEmail = await db.collection('staff_by_email').doc(email).get();
+    if (!byEmail.exists) return null;
+    final data = <String, dynamic>{...?byEmail.data(), 'uid': uid};
+    await db.collection('staff').doc(uid).set(data);
+    final dupes = await db.collection('staff').where('email', isEqualTo: email).get();
+    for (final d in dupes.docs) {
+      if (d.id != uid) { try { await d.reference.delete(); } catch (_) {} }
+    }
+    return data;
   }
 
   Future<void> _toggleClock() async {
@@ -114,6 +141,14 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
           'clockInTime': FieldValue.serverTimestamp(),
         });
         if (mounted) setState(() { _clockedIn = true; _clockInTime = now; });
+        final who = (_myName.isNotEmpty ? _myName : (_staffData['name'] ?? _user?.displayName ?? '')).toString();
+        notifyAdmin(
+          type:  'clock_in',
+          title: 'Staff clocked in',
+          body:  '${who.isEmpty ? 'A staff member' : who} started work at ${DateFormat('HH:mm').format(now)}'
+                 '${(_myCategory ?? '').isNotEmpty ? ' (${_myCategory!})' : ''}.',
+          extra: {'staffName': who, 'category': _myCategory ?? ''},
+        );
       }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -454,7 +489,7 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
         const SizedBox(height: 10),
         Row(children: [
           Expanded(child: _QuickAction(icon: Icons.phone, label: 'Call Office', color: AppTheme.navy,
-            onTap: () async { final uri = Uri.parse('tel:+233240699329'); if (await canLaunchUrl(uri)) await launchUrl(uri); })),
+            onTap: () => ContactHelper.callOffice(context))),
           const SizedBox(width: 10),
           Expanded(child: _QuickAction(icon: Icons.chat, label: 'WhatsApp', color: const Color(0xFF25D366),
             onTap: () async { final uri = Uri.parse('https://wa.me/233240699329'); if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication); })),
@@ -613,6 +648,12 @@ class _JobCard extends StatelessWidget {
           'acceptedAt':        FieldValue.serverTimestamp(),
         });
       });
+      notifyAdmin(
+        type:  'job_accepted',
+        title: 'Booking accepted',
+        body:  '${myName.isEmpty ? 'A staff member' : myName} accepted ${data['service'] ?? 'a booking'} for ${data['clientName'] ?? 'a client'} (${data['date'] ?? 'TBD'} ${data['time'] ?? ''}).',
+        extra: {'bookingId': docId, 'staffName': myName, 'category': data['category'] ?? ''},
+      );
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: const Row(mainAxisSize: MainAxisSize.min, children: [

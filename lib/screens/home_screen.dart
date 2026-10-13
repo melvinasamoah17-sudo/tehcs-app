@@ -10,10 +10,13 @@ import 'cleaning/cleaning_home_screen.dart';
 import 'homecare/homecare_home_screen.dart';
 import 'construction/construction_home_screen.dart';
 import 'booking_screen.dart';
+import 'services_screen.dart';
 
 IconData _divisionIcon(String id) => switch (id) {
       'cleaning' => Icons.cleaning_services,
       'homecare' => Icons.favorite,
+      'medical' => Icons.medical_services,
+      'nonmedical' => Icons.volunteer_activism,
       'construction' => Icons.construction,
       _ => Icons.star,
     };
@@ -21,6 +24,8 @@ IconData _divisionIcon(String id) => switch (id) {
 String _divisionCategory(String id) => switch (id) {
       'cleaning' => 'Cleaning',
       'homecare' => 'Home Care',
+      'medical' => 'Medical',
+      'nonmedical' => 'Non-Medical',
       'construction' => 'Construction',
       _ => '',
     };
@@ -62,7 +67,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return name.split(' ').first;
   }
 
-  // ── 3 Divisions ──
+  // ── Divisions ──
   final _divisions = [
     {
       'id': 'cleaning',
@@ -94,6 +99,39 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'Medication Reminders',
         'Live-in Care',
         'Night Care'
+      ],
+    },
+    {
+      'id': 'medical',
+      'emoji': '🩺',
+      'title': 'Medical Services',
+      'subtitle': 'Doctors · Nursing · Wound Care · Therapy',
+      'color': const Color(0xFF0B4A5E),
+      'accent': const Color(0xFF0E8A9B),
+      'services': [
+        'Doctors & Healthcare Professionals',
+        'Nursing Care',
+        'Health Assessments & Monitoring',
+        'Wound Care & Dressing',
+        'Therapists & Psychologists',
+        'Pharmacist Support & Medication Management'
+      ],
+    },
+    {
+      'id': 'nonmedical',
+      'emoji': '🤝',
+      'title': 'Non-Medical Services',
+      'subtitle': 'Childcare · Errands · Delivery · Events · Moving',
+      'color': const Color(0xFF3B2A6B),
+      'accent': const Color(0xFF6C4BB5),
+      'services': [
+        'Childcare & Family Support',
+        'Shopping & Errands',
+        'Delivery & Transport',
+        'Retail & Business Staffing',
+        'Hospitality & Events',
+        'Home & Lifestyle',
+        'Moving & Assistance'
       ],
     },
     {
@@ -181,6 +219,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       case 'construction':
         screen = const ConstructionHomeScreen();
         break;
+      case 'medical':
+        screen =
+            const ServicesScreen(initialCategory: 'Medical', showBack: true);
+        break;
+      case 'nonmedical':
+        screen = const ServicesScreen(
+            initialCategory: 'Non-Medical', showBack: true);
+        break;
       default:
         return;
     }
@@ -226,7 +272,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           if (_query.isNotEmpty)
             SliverToBoxAdapter(child: _buildSearchResults()),
 
-          // ── 3 DIVISION CARDS ──
+          // ── DIVISION CARDS ──
           if (_query.isEmpty) ...[
             SliverToBoxAdapter(
               child: Padding(
@@ -430,6 +476,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           },
                         )
                       : null,
+                  filled: false,
                   border: InputBorder.none,
                   enabledBorder: InputBorder.none,
                   focusedBorder: InputBorder.none,
@@ -468,7 +515,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             const SizedBox(width: 8),
             _AnimatedStatBox(value: active, label: 'Active'),
             const SizedBox(width: 8),
-            _AnimatedStatBox(value: 3, label: 'Services'),
+            _AnimatedStatBox(value: _divisions.length, label: 'Services'),
             const SizedBox(width: 8),
             _StatBoxRaw(value: '24/7', label: 'Support'),
           ]);
@@ -644,11 +691,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           _PulseCircleBtn(
               icon: Icons.phone,
               color: AppTheme.gold,
-              onTap: () => _call('+233240699329')),
+              onTap: () => _call('+233505108071')),
           const SizedBox(width: 8),
           _CircleBtn(
-              icon: Icons.smartphone,
-              color: const Color(0xFF25D366),
+              icon: Icons.phone,
+              color: const Color(0xFF3B82F6),
               onTap: () => _call('+447448468070')),
           const SizedBox(width: 8),
           _CircleBtn(

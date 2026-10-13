@@ -11,8 +11,11 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:crypto/crypto.dart';
 import '../../theme/app_theme.dart';
 import '../../services/auth_routing.dart';
-import '../../widgets/blur_slideshow.dart';
+import '../../services/phone_auth_helper.dart';
+import '../../services/region_service.dart';
+import '../verify/verify_africa_screen.dart';
 import 'verify_email_screen.dart';
+import '../../widgets/blur_slideshow.dart';
 import 'login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -171,15 +174,16 @@ class _RegisterScreenState extends State<RegisterScreen>
         password: _pwdCtrl.text,
       );
       await cred.user?.updateDisplayName(_nameCtrl.text.trim());
-      await cred.user?.sendEmailVerification();
 
       final uid = cred.user!.uid;
+      final region = RegionService.current;
       await FirebaseFirestore.instance.collection('clients').doc(uid).set({
         'uid':              uid,
         'name':             _nameCtrl.text.trim(),
         'email':            _emailCtrl.text.trim(),
-        'phone':            _phoneCtrl.text.trim(),
+        'phone':            PhoneAuthHelper.normalize(_phoneCtrl.text.trim(), dial: region.dial),
         'role':             'customer',
+        'country':          region.code,
         'address':          _addressCtrl.text.trim(),
         'dob':              _dobCtrl.text.trim(),
         'emergencyContact': _emergCtrl.text.trim(),
@@ -189,8 +193,11 @@ class _RegisterScreenState extends State<RegisterScreen>
       });
 
       if (!mounted) return;
+      // Identity verification is part of sign-up (Ghana); email check follows.
       Navigator.of(context).pushReplacement(MaterialPageRoute(
-          builder: (_) => const VerifyEmailScreen(role: 'customer')));
+          builder: (_) => idVerificationRequired
+              ? const VerifyAfricaScreen(role: 'customer', onboarding: true)
+              : const VerifyEmailScreen(role: 'customer')));
     } on FirebaseAuthException catch (e) {
       _setErr(switch (e.code) {
         'email-already-in-use' => 'An account already exists with this email.',
@@ -438,6 +445,47 @@ class _RegisterScreenState extends State<RegisterScreen>
 
                     if (_error != null) _ErrorBox(message: _error!),
 
+                    // ── Country (switches the app to Ghana or UK style) ──
+                    _glassLabel('Where are you based?'),
+                    const SizedBox(height: 6),
+                    Row(children: [
+                      for (final r in AppRegion.all) ...[
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () async {
+                              await RegionService.set(r);
+                              setState(() {});
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                color: RegionService.current.code == r.code
+                                    ? AppTheme.gold
+                                    : Colors.white.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                    color: RegionService.current.code == r.code
+                                        ? AppTheme.gold
+                                        : Colors.white24),
+                              ),
+                              child: Center(
+                                child: Text('${r.flag}  ${r.isUK ? 'UK' : r.name}',
+                                    style: GoogleFonts.nunito(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w800,
+                                        color: RegionService.current.code == r.code
+                                            ? AppTheme.navyDark
+                                            : Colors.white)),
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (r != AppRegion.all.last) const SizedBox(width: 10),
+                      ],
+                    ]),
+                    const SizedBox(height: 14),
+
                     // ── Full Name ──
                     _glassLabel('Full Name'),
                     const SizedBox(height: 6),
@@ -546,7 +594,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                     const SizedBox(height: 6),
                     _glassField(
                       ctrl: _phoneCtrl,
-                      hint: '+233 or +44...',
+                      hint: '+${RegionService.current.dial} ${RegionService.current.phoneHint}',
                       icon: Icons.phone_outlined,
                       type: TextInputType.phone,
                     ),
@@ -801,7 +849,7 @@ class _RegisterScreenState extends State<RegisterScreen>
         _label('Home Address'),
         _field(
             ctrl: _addressCtrl,
-            hint: 'Street, City, Postcode',
+            hint: RegionService.current.addressHint,
             icon: Icons.location_on_outlined),
         const SizedBox(height: 14),
         _label('Date of Birth'),

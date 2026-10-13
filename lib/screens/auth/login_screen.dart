@@ -14,6 +14,8 @@ import '../../theme/app_theme.dart';
 import '../../services/auth_routing.dart';
 import '../../widgets/blur_slideshow.dart';
 import 'register_screen.dart';
+import 'phone_login_screen.dart';
+import '../../services/phone_auth_helper.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -179,6 +181,20 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
+  // ── SMS second step (admin 2-step verification) ──
+  Future<void> _finishSecondStep(FirebaseAuthMultiFactorException e) async {
+    try {
+      final user = await PhoneAuthHelper.resolveSignIn(context, e);
+      if (user != null) {
+        await _navigate(user);
+      } else if (mounted) {
+        setState(() => _error = 'Sign-in cancelled.');
+      }
+    } catch (err) {
+      if (mounted) setState(() => _error = PhoneAuthHelper.friendly(err));
+    }
+  }
+
   // ── EMAIL / PASSWORD ──
   Future<void> _login() async {
     final email = _emailCtrl.text.trim();
@@ -195,6 +211,8 @@ class _LoginScreenState extends State<LoginScreen>
       final cred = await FirebaseAuth.instance
           .signInWithEmailAndPassword(email: email, password: pwd);
       await _navigate(cred.user!);
+    } on FirebaseAuthMultiFactorException catch (e) {
+      await _finishSecondStep(e);
     } on FirebaseAuthException catch (e) {
       setState(() {
         _error = switch (e.code) {
@@ -231,6 +249,8 @@ class _LoginScreenState extends State<LoginScreen>
       );
       final result = await FirebaseAuth.instance.signInWithCredential(cred);
       await _navigate(result.user!);
+    } on FirebaseAuthMultiFactorException catch (e) {
+      await _finishSecondStep(e);
     } on FirebaseAuthException catch (e) {
       setState(() => _error = e.message ?? 'Google sign-in failed.');
     } catch (e) {
@@ -307,6 +327,10 @@ class _LoginScreenState extends State<LoginScreen>
       if (entered == null || entered.isEmpty) return;
       email = entered;
     }
+    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
+      _showResetError('Please enter a valid email address.');
+      return;
+    }
 
     setState(() {
       _error = null;
@@ -356,22 +380,35 @@ class _LoginScreenState extends State<LoginScreen>
       setState(() => _loading = false);
       final msg = switch (e.code) {
         'user-not-found' => 'No account found for $email.',
-        'invalid-email' => 'That doesn\'t look like a valid email.',
+        'invalid-email' || 'missing-email' =>
+          'That doesn\'t look like a valid email.',
         'too-many-requests' => 'Too many attempts. Please wait a moment.',
-        _ => 'Could not send reset email. Please try again.',
+        'network-request-failed' =>
+          'No internet connection. Check your network and try again.',
+        _ => 'Could not send reset email (${e.code}). Please try again.',
       };
-      setState(() => _error = msg);
+      _showResetError(msg);
     } catch (_) {
       if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = 'Could not send reset email. Check your connection.';
-      });
+      setState(() => _loading = false);
+      _showResetError('Could not send reset email. Check your connection.');
     }
   }
 
+  void _showResetError(String msg) {
+    if (!mounted) return;
+    setState(() => _error = msg);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(msg),
+        backgroundColor: Colors.red.shade700,
+        behavior: SnackBarBehavior.floating,
+      ));
+  }
+
   Future<String?> _promptEmail() async {
-    final ctrl = TextEditingController();
+    final ctrl = TextEditingController(text: _emailCtrl.text.trim());
     return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -735,12 +772,17 @@ class _LoginScreenState extends State<LoginScreen>
                                   Align(
                                     alignment: Alignment.centerRight,
                                     child: GestureDetector(
-                                      onTap: _forgotPassword,
-                                      child: Text('Forgot password?',
-                                          style: GoogleFonts.nunito(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
-                                              color: AppTheme.gold)),
+                                      behavior: HitTestBehavior.opaque,
+                                      onTap: _loading ? null : _forgotPassword,
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 10),
+                                        child: Text('Forgot password?',
+                                            style: GoogleFonts.nunito(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w700,
+                                                color: AppTheme.gold)),
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(height: 18),
@@ -866,6 +908,30 @@ class _LoginScreenState extends State<LoginScreen>
                                           )),
                                           const SizedBox(width: 10),
                                           Text('Google',
+                                              style: GoogleFonts.nunito(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Colors.white70)),
+                                        ]),
+                                  ),
+
+                                  // ── Phone button ──
+                                  const SizedBox(height: 10),
+                                  _GlassSocialButton(
+                                    onTap: () => Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (_) =>
+                                                const PhoneLoginScreen())),
+                                    loading: false,
+                                    child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(Icons.phone_android,
+                                              color: Colors.white70, size: 19),
+                                          const SizedBox(width: 8),
+                                          Text('Phone number',
                                               style: GoogleFonts.nunito(
                                                   fontSize: 13,
                                                   fontWeight: FontWeight.w600,
