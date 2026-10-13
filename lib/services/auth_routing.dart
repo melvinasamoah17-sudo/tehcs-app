@@ -10,7 +10,11 @@ import 'region_service.dart';
 const String kPrimaryAdminEmail = 'twitchempireinfo@gmail.com';
 
 /// Customers must verify their identity before they can use the app.
+/// Ghana only for now — UK verification will be added later.
 const bool kRequireIdVerification = true;
+
+bool get idVerificationRequired =>
+    kRequireIdVerification && !RegionService.current.isUK;
 
 enum UserRole { client, staff, admin }
 
@@ -46,7 +50,7 @@ Future<Widget> resolveHomeScreen(User user) async {
     await _ensureClientProfile(refreshed);
     final ref = db.collection('clients').doc(refreshed.uid);
     await RegionService.syncFromProfile(ref);
-    if (kRequireIdVerification && !await _isIdVerified(ref)) {
+    if (idVerificationRequired && !await _isIdVerified(ref)) {
       return const VerifyAfricaScreen(role: 'customer', onboarding: true);
     }
     return const MainScreen(role: 'customer');

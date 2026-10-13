@@ -603,6 +603,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
       child: _Section(title: 'Account', children: [
+        // ID verification is Ghana only for now
+        if (!RegionService.current.isUK)
         _ActionRow(
           icon: Icons.verified_user_outlined,
           label: _data['id_verified'] == true

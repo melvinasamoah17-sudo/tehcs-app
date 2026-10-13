@@ -8,7 +8,6 @@ import 'dart:convert';
 import 'dart:io';
 import '../../theme/app_theme.dart';
 import '../../services/auth_routing.dart';
-import '../../services/region_service.dart';
 import '../auth/login_screen.dart';
 
 // ─────────────────────────────────────────
@@ -37,7 +36,8 @@ class _VerifyAfricaScreenState extends State<VerifyAfricaScreen>
   int   _step       = 0; // 0=select ID, 1=enter details, 2=selfie, 3=result
 
   // ── ID Types ──
-  String _country   = 'GH'; // 'GH' | 'GB'
+  // Ghana only for now; UK documents to be added later.
+  final String _country = 'GH';
   String _idType    = 'GHANA_CARD';
   static const _idTypesByCountry = {
     'GH': [
@@ -46,12 +46,6 @@ class _VerifyAfricaScreenState extends State<VerifyAfricaScreen>
       {'id': 'DRIVERS',     'label': 'Driver\'s Licence',  'icon': Icons.directions_car_outlined, 'desc': 'DVLA Ghana Driver\'s Licence', 'hint': 'Licence number'},
       {'id': 'SSNIT',       'label': 'SSNIT Card',         'icon': Icons.account_balance_outlined, 'desc': 'Social Security Card', 'hint': 'SSNIT number'},
       {'id': 'VOTERS',      'label': 'Voter\'s ID',        'icon': Icons.how_to_vote_outlined, 'desc': 'Electoral Commission ID', 'hint': 'Voter ID number'},
-    ],
-    'GB': [
-      {'id': 'PASSPORT',    'label': 'UK Passport',        'icon': Icons.import_contacts_outlined, 'desc': 'British Passport', 'hint': 'e.g. 123456789'},
-      {'id': 'DRIVERS',     'label': 'Driving Licence',    'icon': Icons.directions_car_outlined, 'desc': 'DVLA Photocard Driving Licence', 'hint': 'e.g. MORGA753116SM9IJ'},
-      {'id': 'SHARE_CODE',  'label': 'eVisa / Share Code', 'icon': Icons.qr_code_2_outlined, 'desc': 'UKVI Right to Work / Rent Share Code', 'hint': 'e.g. W12 345 678'},
-      {'id': 'NI_NUMBER',   'label': 'National Insurance', 'icon': Icons.account_balance_outlined, 'desc': 'National Insurance Number', 'hint': 'e.g. QQ 12 34 56 C'},
     ],
   };
   List<Map<String, Object>> get _idTypes => _idTypesByCountry[_country]!;
@@ -77,8 +71,6 @@ class _VerifyAfricaScreenState extends State<VerifyAfricaScreen>
   @override
   void initState() {
     super.initState();
-    _country = RegionService.current.code;
-    _idType  = _idTypes.first['id'] as String;
     _animCtrl  = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
     _checkScale = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _animCtrl, curve: Curves.elasticOut));
@@ -309,7 +301,7 @@ class _VerifyAfricaScreenState extends State<VerifyAfricaScreen>
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _sectionTitle('Select ID Type'),
         Text(widget.onboarding
-            ? 'Last step of sign-up — verify your identity to start using TEHCS. Choose the country and type of your ID.'
+            ? 'Last step of sign-up — verify your identity to start using TEHCS. Choose the type of ID.'
             : 'Choose the type of ID you want to verify with',
           style: GoogleFonts.inter(fontSize: 13, color: AppTheme.textMute, fontWeight: FontWeight.w300)),
         const SizedBox(height: 20),
@@ -334,31 +326,6 @@ class _VerifyAfricaScreenState extends State<VerifyAfricaScreen>
           ]),
         ),
         const SizedBox(height: 20),
-
-        // ── Country of ID ──
-        Row(children: [
-          for (final c in const [['GH', '🇬🇭  Ghana'], ['GB', '🇬🇧  United Kingdom']]) ...[
-            Expanded(child: GestureDetector(
-              onTap: () => setState(() {
-                _country = c[0];
-                _idType  = _idTypes.first['id'] as String;
-              }),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  color: _country == c[0] ? AppTheme.navy : AppTheme.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _country == c[0] ? AppTheme.navy : AppTheme.border)),
-                child: Center(child: Text(c[1], style: GoogleFonts.poppins(
-                  fontSize: 13, fontWeight: FontWeight.w700,
-                  color: _country == c[0] ? Colors.white : AppTheme.navyDark))),
-              ),
-            )),
-            if (c[0] == 'GH') const SizedBox(width: 10),
-          ],
-        ]),
-        const SizedBox(height: 16),
 
         ..._idTypes.map((t) {
           final sel = _idType == t['id'];
