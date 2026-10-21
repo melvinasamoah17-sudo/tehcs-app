@@ -1,0 +1,50 @@
+# Codemagic CI — builds the iOS app on a cloud Mac and uploads it to TestFlight.
+#
+# One-time setup in Codemagic (https://codemagic.io):
+#   1. Teams > Integrations > Developer Portal: add an App Store Connect API key
+#      and name it exactly "TEHCS App Store Connect".
+#   2. App settings > Environment variables: create a group named "tehcs_secrets"
+#      with VERIFY_AFRICA_API_KEY (mark it Secure).
+#   3. In App Store Connect, create the app with bundle ID com.tehcs.app.
+
+workflows:
+  ios-release:
+    name: iOS release (TestFlight)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      app_store_connect: TEHCS App Store Connect
+    environment:
+      flutter: 3.44.1
+      xcode: latest
+      cocoapods: default
+      groups:
+        - tehcs_secrets
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.tehcs.app
+    # No automatic triggers: start builds with "Start new build" in Codemagic.
+    scripts:
+      - name: Get packages
+        script: flutter pub get
+      - name: Install pods
+        script: cd ios && pod install --repo-update
+      - name: Set up code signing
+        script: xcode-project use-profiles
+      - name: Build IPA
+        script: |
+          # Codemagic's build counter keeps each TestFlight upload unique
+          flutter build ipa --release \
+            --build-number=$((BUILD_NUMBER + 10)) \
+            --dart-define=VERIFY_AFRICA_API_KEY=$VERIFY_AFRICA_API_KEY \
+            --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      email:
+        recipients:
+          - melvinadjei8@gmail.com
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
