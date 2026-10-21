@@ -8,6 +8,36 @@
 #   3. In App Store Connect, create the app with bundle ID com.tehcs.app.
 
 workflows:
+  # Simplest build: iPhone simulator app, no Apple account needed.
+  # Download the .zip from the build page and upload it to https://appetize.io
+  # to try the app in your browser.
+  ios-simulator:
+    name: iOS simulator (no Apple account)
+    instance_type: mac_mini_m2
+    max_build_duration: 45
+    environment:
+      flutter: 3.44.1
+      xcode: latest
+      cocoapods: default
+      groups:
+        - tehcs_secrets
+    scripts:
+      - name: Get packages
+        script: flutter pub get
+      - name: Install pods
+        script: cd ios && pod install --repo-update
+      - name: Build simulator app
+        script: |
+          flutter build ios --simulator --debug \
+            --dart-define=VERIFY_AFRICA_API_KEY=$VERIFY_AFRICA_API_KEY
+          cd build/ios/iphonesimulator && zip -r "$CM_BUILD_DIR/TEHCS-simulator.zip" Runner.app
+    artifacts:
+      - TEHCS-simulator.zip
+    publishing:
+      email:
+        recipients:
+          - melvinadjei8@gmail.com
+
   ios-release:
     name: iOS release (TestFlight)
     instance_type: mac_mini_m2
