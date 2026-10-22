@@ -245,6 +245,118 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  /// Permanently delete the customer's account (required by the App Store).
+  Future<void> _deleteAccount() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final usesPassword =
+        user.providerData.any((p) => p.providerId == 'password');
+    final pwdCtrl = TextEditingController();
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text('Delete Account',
+            style: GoogleFonts.poppins(
+                fontSize: 20, fontWeight: FontWeight.w900, color: AppTheme.red)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(
+              'This permanently deletes your TEHCS account, your profile and your '
+              'support messages. This cannot be undone.\n\n'
+              'Past booking records are kept for our business records.',
+              style: GoogleFonts.inter(fontSize: 14, color: AppTheme.textMid)),
+          if (usesPassword) ...[
+            const SizedBox(height: 14),
+            TextField(
+              controller: pwdCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(
+                  labelText: 'Enter your password to confirm'),
+            ),
+          ],
+        ]),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel',
+                  style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textMute))),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.red,
+                  shape: const StadiumBorder(),
+                  elevation: 0),
+              child: Text('Delete',
+                  style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white))),
+        ],
+      ),
+    );
+    final password = pwdCtrl.text;
+    pwdCtrl.dispose();
+    if (confirm != true || !mounted) return;
+
+    void say(String msg, {bool ok = false}) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(msg),
+        backgroundColor: ok ? AppTheme.green : AppTheme.red,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ));
+    }
+
+    // Firebase only deletes accounts that signed in recently. Check this
+    // BEFORE removing any data, so we never leave a half-deleted account.
+    try {
+      if (usesPassword) {
+        await user.reauthenticateWithCredential(EmailAuthProvider.credential(
+            email: user.email ?? '', password: password));
+      } else {
+        final last = user.metadata.lastSignInTime;
+        if (last == null ||
+            DateTime.now().difference(last) > const Duration(minutes: 4)) {
+          say('For security, please sign out and sign in again, then delete your account.');
+          return;
+        }
+      }
+    } on FirebaseAuthException {
+      say('Incorrect password. Please try again.');
+      return;
+    }
+
+    try {
+      final db = FirebaseFirestore.instance;
+      final chats =
+          await db.collection('chats').where('uid', isEqualTo: user.uid).get();
+      final batch = db.batch();
+      for (final d in chats.docs) {
+        batch.delete(d.reference);
+      }
+      batch.delete(db.collection('clients').doc(user.uid));
+      batch.delete(db.collection('device_tokens').doc(user.uid));
+      await batch.commit();
+
+      await user.delete();
+      await FirebaseAuth.instance.signOut();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
+    } on FirebaseAuthException catch (e) {
+      say(e.code == 'requires-recent-login'
+          ? 'For security, please sign out and sign in again, then delete your account.'
+          : 'Could not delete your account. Please try again.');
+    } catch (_) {
+      say('Could not delete your account. Please try again.');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -765,6 +877,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
           ),
+          if (_role == 'customer') ...[
+            const SizedBox(height: 6),
+            TextButton(
+              onPressed: _deleteAccount,
+              child: Text('Delete Account',
+                  style: GoogleFonts.inter(
+                      fontSize: 13,
+                      color: AppTheme.red,
+                      fontWeight: FontWeight.w500,
+                      decoration: TextDecoration.underline,
+                      decorationColor: AppTheme.red)),
+            ),
+          ],
         ],
       ),
     );

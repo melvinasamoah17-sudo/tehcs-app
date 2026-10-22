@@ -50,6 +50,8 @@ service cloud.firestore {
     match /clients/{docId} {
       allow create: if request.auth != null;
       allow read, update: if isStaff() || (request.auth != null && (resource == null || resource.data.uid == request.auth.uid || docId == request.auth.uid));
+      // Customers can delete their own profile (in-app account deletion)
+      allow delete: if isStaff() || (request.auth != null && (resource.data.uid == request.auth.uid || docId == request.auth.uid));
     }
 
     // 5a. Phone push tokens (each user writes only their own)
@@ -75,7 +77,7 @@ service cloud.firestore {
       allow create: if request.auth != null;
       // Fixed: removed resource == null on reads so users can't read other people's chats
       allow read, update: if isStaff() || (request.auth != null && resource != null && resource.data.uid == request.auth.uid);
-      allow delete: if isStaff();
+      allow delete: if isStaff() || (request.auth != null && resource.data.uid == request.auth.uid);
     }
   }
 }
