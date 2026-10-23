@@ -9,9 +9,10 @@ import 'region_service.dart';
 
 const String kPrimaryAdminEmail = 'twitchempireinfo@gmail.com';
 
-/// Customers must verify their identity before they can use the app.
+/// When true, customers must verify their identity at sign-up before using
+/// the app. Off: they verify later from Profile → "Verify My Identity".
 /// Ghana only for now — UK verification will be added later.
-const bool kRequireIdVerification = true;
+const bool kRequireIdVerification = false;
 
 bool get idVerificationRequired =>
     kRequireIdVerification && !RegionService.current.isUK;
