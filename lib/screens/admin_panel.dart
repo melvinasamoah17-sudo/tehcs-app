@@ -11,6 +11,7 @@ import 'auth/login_screen.dart';
 import '../widgets/animations.dart';
 import '../widgets/admin_notification_bell.dart';
 import '../services/push_service.dart';
+import '../services/booking_export.dart';
 
 class AdminPanel extends StatefulWidget {
   final String mode;
@@ -23,6 +24,9 @@ class _AdminPanelState extends State<AdminPanel>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabs;
   DateTime? _pausedAt;
+
+  /// Staff only see bookings for the service they are registered to.
+  String? _staffCategory;
 
   static const _adminEmail = 'twitchempireinfo@gmail.com';
   bool get _isAdmin => FirebaseAuth.instance.currentUser?.email == _adminEmail;
@@ -54,7 +58,30 @@ class _AdminPanelState extends State<AdminPanel>
     WidgetsBinding.instance.addObserver(this);
     _tabs = TabController(length: _isAdmin ? 7 : 4, vsync: this);
     PushService.init(); // phone push notifications
+    if (!_isAdmin) _loadStaffCategory();
   }
+
+  Future<void> _loadStaffCategory() async {
+    final user = FirebaseAuth.instance.currentUser;
+    String cat = '';
+    try {
+      final email = user?.email?.toLowerCase();
+      if (email != null) {
+        final d = await FirebaseFirestore.instance
+            .collection('staff_by_email').doc(email).get();
+        cat = (d.data()?['category'] as String?) ?? '';
+      }
+      if (cat.isEmpty && user != null) {
+        final d = await FirebaseFirestore.instance
+            .collection('staff').doc(user.uid).get();
+        cat = (d.data()?['category'] as String?) ?? '';
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _staffCategory = cat);
+  }
+
+  /// null = admin (everything); '' = staff with no service assigned.
+  String? get _scope => _isAdmin ? null : (_staffCategory ?? '');
 
   @override
   void dispose() {
@@ -160,8 +187,8 @@ class _AdminPanelState extends State<AdminPanel>
         body: TabBarView(
           controller: _tabs,
           children: [
-            _OverviewTab(isAdmin: _isAdmin),
-            _BookingsTab(isAdmin: _isAdmin),
+            _OverviewTab(isAdmin: _isAdmin, category: _scope),
+            _BookingsTab(isAdmin: _isAdmin, category: _scope),
             _UsersTab(isAdmin: _isAdmin),
             const AdminMessagesScreen(),
             if (_isAdmin) _FinanceTab(),
@@ -179,13 +206,18 @@ class _AdminPanelState extends State<AdminPanel>
 // ══════════════════════════════════════════
 class _OverviewTab extends StatelessWidget {
   final bool isAdmin;
-  const _OverviewTab({required this.isAdmin});
+  final String? category; // null = all services (admin)
+  const _OverviewTab({required this.isAdmin, this.category});
 
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (!isAdmin) ...[
+          _ServiceBanner(category: category),
+          const SizedBox(height: 14),
+        ],
         // Live stats
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection('bookings').snapshots(),
@@ -196,7 +228,9 @@ class _OverviewTab extends StatelessWidget {
               stream:
                   FirebaseFirestore.instance.collection('staff').snapshots(),
               builder: (_, sSnap) {
-                final bookings = bSnap.data?.docs ?? [];
+                final bookings = (bSnap.data?.docs ?? [])
+                    .where((d) => _inScope(d.data() as Map, category))
+                    .toList();
                 final clients = cSnap.data?.docs.length ?? 0;
                 final staff = sSnap.data?.docs.length ?? 0;
                 final pending = bookings
@@ -212,24 +246,28 @@ class _OverviewTab extends StatelessWidget {
                   Row(children: [
                     _StatCard(
                         value: '${bookings.length}',
-                        label: 'Total Bookings',
+                        label: isAdmin ? 'Total Bookings' : 'My Service Bookings',
                         icon: Icons.calendar_today_outlined,
                         color: AppTheme.navy),
-                    const SizedBox(width: 10),
-                    _StatCard(
-                        value: '$clients',
-                        label: 'Customers',
-                        icon: Icons.people_outline,
-                        color: AppTheme.goldDark),
+                    if (isAdmin) ...[
+                      const SizedBox(width: 10),
+                      _StatCard(
+                          value: '$clients',
+                          label: 'Customers',
+                          icon: Icons.people_outline,
+                          color: AppTheme.goldDark),
+                    ],
                   ]),
                   const SizedBox(height: 10),
                   Row(children: [
-                    _StatCard(
-                        value: '$staff',
-                        label: 'Staff Members',
-                        icon: Icons.badge_outlined,
-                        color: const Color(0xFF6B21A8)),
-                    const SizedBox(width: 10),
+                    if (isAdmin) ...[
+                      _StatCard(
+                          value: '$staff',
+                          label: 'Staff Members',
+                          icon: Icons.badge_outlined,
+                          color: const Color(0xFF6B21A8)),
+                      const SizedBox(width: 10),
+                    ],
                     _StatCard(
                         value: '$active',
                         label: 'Active Jobs',
@@ -264,10 +302,13 @@ class _OverviewTab extends StatelessWidget {
           stream: FirebaseFirestore.instance
               .collection('bookings')
               .orderBy('createdAt', descending: true)
-              .limit(5)
+              .limit(category == null ? 5 : 200)
               .snapshots(),
           builder: (_, snap) {
-            final docs = snap.data?.docs ?? [];
+            final docs = (snap.data?.docs ?? [])
+                .where((d) => _inScope(d.data() as Map, category))
+                .take(5)
+                .toList();
             if (docs.isEmpty) return _emptyState('No bookings yet');
             return Column(
                 children: docs.map((d) {
@@ -287,7 +328,9 @@ class _OverviewTab extends StatelessWidget {
               .where('clockedIn', isEqualTo: true)
               .snapshots(),
           builder: (_, snap) {
-            final docs = snap.data?.docs ?? [];
+            final docs = (snap.data?.docs ?? [])
+                .where((d) => _inScope(d.data() as Map, category))
+                .toList();
             if (docs.isEmpty)
               return _emptyState('No staff currently clocked in');
             return Column(
@@ -310,7 +353,9 @@ class _OverviewTab extends StatelessWidget {
               .limit(3)
               .snapshots(),
           builder: (_, snap) {
-            final docs = snap.data?.docs ?? [];
+            final docs = (snap.data?.docs ?? [])
+                .where((d) => _inScope(d.data() as Map, category))
+                .toList();
             if (docs.isEmpty) return _emptyState('No pending quote requests');
             return Column(
                 children: docs.map((d) {
@@ -329,7 +374,8 @@ class _OverviewTab extends StatelessWidget {
 // ══════════════════════════════════════════
 class _BookingsTab extends StatefulWidget {
   final bool isAdmin;
-  const _BookingsTab({required this.isAdmin});
+  final String? category; // null = all services (admin)
+  const _BookingsTab({required this.isAdmin, this.category});
   @override
   State<_BookingsTab> createState() => _BookingsTabState();
 }
@@ -346,14 +392,118 @@ class _BookingsTabState extends State<_BookingsTab> {
     return q.snapshots();
   }
 
+  // ── Admin: export bookings to Excel (per service), optionally delete ──
+  Future<void> _export() async {
+    final snap = await FirebaseFirestore.instance
+        .collection('bookings')
+        .orderBy('createdAt', descending: true)
+        .get();
+    final all = snap.docs;
+    if (!mounted) return;
+    if (all.isEmpty) {
+      _toast('There are no bookings to export.');
+      return;
+    }
+    final counts = <String, int>{};
+    for (final d in all) {
+      final c = BookingExport.categoryOf(d.data());
+      counts[c] = (counts[c] ?? 0) + 1;
+    }
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppTheme.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('Export bookings to Excel',
+                style: GoogleFonts.poppins(
+                    fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.navy)),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.table_view_outlined, color: AppTheme.navy),
+              title: const Text('All services'),
+              subtitle: Text('${all.length} bookings · one sheet per service'),
+              onTap: () => Navigator.pop(ctx, '*'),
+            ),
+            const Divider(height: 1),
+            for (final e in counts.entries)
+              ListTile(
+                leading: const Icon(Icons.description_outlined, color: AppTheme.textMid),
+                title: Text(e.key),
+                subtitle: Text('${e.value} bookings'),
+                onTap: () => Navigator.pop(ctx, e.key),
+              ),
+          ]),
+        ),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    final docs = choice == '*'
+        ? all
+        : all.where((d) => BookingExport.categoryOf(d.data()) == choice).toList();
+    final title = choice == '*' ? 'All services' : choice;
+    try {
+      await BookingExport.exportAndShare(docs, title: title);
+    } catch (_) {
+      _toast('Could not create the Excel file. Please try again.');
+      return;
+    }
+    if (!mounted) return;
+    // Offer to clear the exported bookings now they're saved for the records.
+    final del = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete exported bookings?'),
+        content: Text(
+            'Exported ${docs.length} bookings ($title). Do you also want to delete '
+            'them from the app? Only do this once you have saved the Excel file. '
+            'This cannot be undone.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Keep them')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete', style: TextStyle(color: AppTheme.red))),
+        ],
+      ),
+    );
+    if (del != true) return;
+    try {
+      await BookingExport.deleteAll(docs);
+      _toast('Deleted ${docs.length} bookings.', ok: true);
+    } catch (_) {
+      _toast('Could not delete the bookings. Please try again.');
+    }
+  }
+
+  void _toast(String msg, {bool ok = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg),
+      backgroundColor: ok ? AppTheme.green : AppTheme.red,
+      behavior: SnackBarBehavior.floating,
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(children: [
+      if (!widget.isAdmin && (widget.category ?? '').isEmpty)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+          child: _ServiceBanner(category: widget.category),
+        ),
       // Filter chips
       Container(
         color: AppTheme.white,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: SingleChildScrollView(
+        child: Row(children: [
+          Expanded(
+            child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
               children: _filters
@@ -385,7 +535,15 @@ class _BookingsTabState extends State<_BookingsTab> {
                         ),
                       ))
                   .toList()),
-        ),
+            ),
+          ),
+          if (widget.isAdmin)
+            IconButton(
+              tooltip: 'Export to Excel',
+              icon: const Icon(Icons.file_download_outlined, color: AppTheme.navy),
+              onPressed: _export,
+            ),
+        ]),
       ),
       Expanded(
           child: StreamBuilder<QuerySnapshot>(
@@ -396,7 +554,9 @@ class _BookingsTabState extends State<_BookingsTab> {
                 child: CircularProgressIndicator(
                     color: AppTheme.navy, strokeWidth: 2));
           }
-          final docs = snap.data?.docs ?? [];
+          final docs = (snap.data?.docs ?? [])
+              .where((d) => _inScope(d.data() as Map, widget.category))
+              .toList();
           if (docs.isEmpty)
             return _emptyState(
                 'No ${_filter == 'all' ? '' : '$_filter '}bookings');
@@ -445,6 +605,10 @@ class _UsersTabState extends State<_UsersTab>
 
   @override
   Widget build(BuildContext context) {
+    // Staff don't see the staff list
+    if (!widget.isAdmin) {
+      return _UserList(collection: 'clients', emptyLabel: 'No customers yet');
+    }
     return Column(children: [
       Container(
         color: AppTheme.navyDark,
@@ -1340,6 +1504,45 @@ class _CategoriesTab extends StatelessWidget {
 // ══════════════════════════════════════════
 // SHARED HELPERS
 // ══════════════════════════════════════════
+
+/// Whether a booking / staff / quote record belongs to [category].
+/// null category = admin, sees everything.
+bool _inScope(Map data, String? category) {
+  if (category == null) return true;
+  if (category.isEmpty) return false;
+  return (data['category'] ?? '').toString() == category;
+}
+
+/// Tells staff which service they're seeing (or that none is assigned).
+class _ServiceBanner extends StatelessWidget {
+  final String? category;
+  const _ServiceBanner({required this.category});
+  @override
+  Widget build(BuildContext context) {
+    final none = (category ?? '').isEmpty;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+          color: (none ? AppTheme.goldDark : AppTheme.navy).withOpacity(.07),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: (none ? AppTheme.goldDark : AppTheme.navy).withOpacity(.2))),
+      child: Row(children: [
+        Icon(none ? Icons.info_outline : Icons.work_outline,
+            size: 18, color: none ? AppTheme.goldDark : AppTheme.navy),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+              none
+                  ? 'You have not been assigned to a service yet. Ask the admin to set your service.'
+                  : 'Showing bookings for your service: $category',
+              style: GoogleFonts.inter(fontSize: 12.5, color: AppTheme.navyDark)),
+        ),
+      ]),
+    );
+  }
+}
 Widget _sectionHeader(String t) => Text(t,
     style: GoogleFonts.poppins(
         fontSize: 12,
@@ -1491,6 +1694,14 @@ class _BookingRow extends StatelessWidget {
                     label: 'Complete',
                     color: AppTheme.navy,
                     onTap: () => _setStatus('complete')),
+                if (isAdmin) ...[
+                  const Spacer(),
+                  IconButton(
+                    tooltip: 'Delete booking',
+                    icon: const Icon(Icons.delete_outline, color: AppTheme.red, size: 20),
+                    onPressed: () => _confirmDelete(context),
+                  ),
+                ],
               ]),
             ]),
           ),
@@ -1503,6 +1714,29 @@ class _BookingRow extends StatelessWidget {
       .collection('bookings')
       .doc(docId)
       .update({'status': status});
+
+  // Admin only (also enforced by Firestore rules)
+  Future<void> _confirmDelete(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete booking?'),
+        content: Text(
+            '${booking.service} for ${booking.clientName} on ${booking.date} will be '
+            'permanently deleted. Export to Excel first if you need a record.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete', style: TextStyle(color: AppTheme.red))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await FirebaseFirestore.instance.collection('bookings').doc(docId).delete();
+  }
 
   Widget _row(IconData icon, String label, String value) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),

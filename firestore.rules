@@ -11,6 +11,12 @@ service cloud.firestore {
       );
     }
 
+    // Helper: the business owner / admin account
+    function isAdmin() {
+      return request.auth != null &&
+        request.auth.token.email == 'twitchempireinfo@gmail.com';
+    }
+
     // 1. Enquiries (from tehcs.com contact form)
     match /enquiries/{docId} {
       allow create: if true; // Public can submit
@@ -43,7 +49,8 @@ service cloud.firestore {
     match /bookings/{docId} {
       allow create: if request.auth != null;
       allow read, update: if isStaff() || (request.auth != null && (resource == null || resource.data.uid == request.auth.uid));
-      allow delete: if isStaff();
+      // Only the admin can delete bookings (after exporting records)
+      allow delete: if isAdmin();
     }
 
     // 5. Clients (App Profiles)
