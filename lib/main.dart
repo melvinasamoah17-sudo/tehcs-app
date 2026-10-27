@@ -11,6 +11,8 @@ import 'firebase_options.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
 import 'screens/auth/login_screen.dart';
+import 'services/call_service.dart';
+import 'package:zego_uikit_prebuilt_call/zego_uikit_prebuilt_call.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -41,6 +43,19 @@ void main() async {
   } catch (e) {
     debugPrint('Firebase Core initialization error: $e');
     firebaseError = e.toString();
+  }
+
+  // In-app calls: incoming call screens use the app's navigator
+  ZegoUIKitPrebuiltCallInvitationService().setNavigatorKey(_navigatorKey);
+  if (firebaseError == null) {
+    // Sign in / out of the call service with the app account
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user != null) {
+        CallService.start(user);
+      } else {
+        CallService.stop();
+      }
+    });
   }
 
   runApp(TEHCSApp(firebaseError: firebaseError));

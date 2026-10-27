@@ -10,6 +10,8 @@ import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
 import '../models/chat_message.dart';
 import '../services/contact_helper.dart';
+import '../services/call_service.dart';
+import '../widgets/voice_note.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -22,6 +24,16 @@ class _ChatScreenState extends State<ChatScreen> {
   final _scroll = ScrollController();
   bool _sending = false;
   bool _showChips = true;
+  final _recorder = VoiceRecorder();
+  bool _recording = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _recorder.onMaxReached = _stopAndSendVoice;
+    // Show the mic button only when the text box is empty
+    _msgCtrl.addListener(() => setState(() {}));
+  }
 
   User? get _user => FirebaseAuth.instance.currentUser;
 
@@ -37,7 +49,96 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _msgCtrl.dispose();
     _scroll.dispose();
+    _recorder.dispose();
     super.dispose();
+  }
+
+  // ─── Voice notes ─────────────────────────────────────────────────────────
+  Future<void> _startRecording() async {
+    final ok = await _recorder.start();
+    if (!ok) {
+      _showError('Please allow microphone access to send voice notes.');
+      return;
+    }
+    if (mounted) setState(() { _recording = true; _showChips = false; });
+  }
+
+  Future<void> _cancelRecording() async {
+    await _recorder.cancel();
+    if (mounted) setState(() => _recording = false);
+  }
+
+  Future<void> _stopAndSendVoice() async {
+    if (!_recording) return;
+    setState(() { _recording = false; _sending = true; });
+    try {
+      final note = await _recorder.stop();
+      final user = _user;
+      if (note == null || user == null) {
+        if (mounted) setState(() => _sending = false);
+        return;
+      }
+      await FirebaseFirestore.instance.collection('chats').add({
+        'uid': user.uid,
+        'name': user.displayName ?? user.email?.split('@').first ?? 'User',
+        'email': user.email ?? '',
+        'text': '🎤 Voice note',
+        'from': 'client',
+        'imageUrl': '',
+        'audioUrl': note.dataUri,
+        'audioSeconds': note.seconds,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      _scrollToBottom();
+    } catch (_) {
+      _showError('Could not send voice note. Check your connection.');
+    }
+    if (mounted) setState(() => _sending = false);
+  }
+
+  // ─── Calls ───────────────────────────────────────────────────────────────
+  Future<void> _showCallOptions() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppTheme.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('Call TEHCS Support',
+                style: GoogleFonts.poppins(
+                    fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.navy)),
+            const SizedBox(height: 6),
+            ListTile(
+              leading: const Icon(Icons.call, color: AppTheme.green),
+              title: const Text('Voice call in the app'),
+              subtitle: const Text('Free — uses your internet'),
+              onTap: () => Navigator.pop(ctx, 'voice'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.videocam, color: AppTheme.navy),
+              title: const Text('Video call in the app'),
+              subtitle: const Text('Free — uses your internet'),
+              onTap: () => Navigator.pop(ctx, 'video'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.phone_outlined, color: AppTheme.textMid),
+              title: const Text('Phone call to our office'),
+              subtitle: const Text('Normal call charges apply'),
+              onTap: () => Navigator.pop(ctx, 'phone'),
+            ),
+          ]),
+        ),
+      ),
+    );
+    if (!mounted || choice == null) return;
+    if (choice == 'phone') {
+      ContactHelper.callOffice(context);
+    } else {
+      await CallService.callSupport(context, video: choice == 'video');
+    }
   }
 
   // ─── Send text message ───────────────────────────────────────────────────
@@ -235,7 +336,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     ]),
                   ])),
               GestureDetector(
-                onTap: () => ContactHelper.callOffice(context),
+                onTap: _showCallOptions,
                 child: Container(
                     width: 38,
                     height: 38,
@@ -244,6 +345,18 @@ class _ChatScreenState extends State<ChatScreen> {
                         borderRadius: BorderRadius.circular(10)),
                     child: const Icon(Icons.phone_outlined,
                         color: Colors.white70, size: 18)),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () => CallService.callSupport(context, video: true),
+                child: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(.1),
+                        borderRadius: BorderRadius.circular(10)),
+                    child: const Icon(Icons.videocam_outlined,
+                        color: Colors.white70, size: 19)),
               ),
               const SizedBox(width: 8),
               GestureDetector(
@@ -397,7 +510,12 @@ class _ChatScreenState extends State<ChatScreen> {
         color: AppTheme.white,
         border: Border(top: BorderSide(color: AppTheme.border)),
       ),
-      child: Row(children: [
+      child: _recording
+          ? RecordingBar(
+              recorder: _recorder,
+              onCancel: _cancelRecording,
+              onSend: _stopAndSendVoice)
+          : Row(children: [
         // Camera / Gallery button
         GestureDetector(
           onTap: _sending ? null : _showImageOptions,
@@ -449,7 +567,19 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
         const SizedBox(width: 8),
-        // Send button
+        // Mic (voice note) when empty, otherwise Send
+        if (_msgCtrl.text.trim().isEmpty && !_sending)
+          GestureDetector(
+            onTap: _startRecording,
+            child: Container(
+              width: 42,
+              height: 42,
+              decoration: const BoxDecoration(
+                  color: AppTheme.navy, shape: BoxShape.circle),
+              child: const Icon(Icons.mic_rounded, color: Colors.white, size: 22),
+            ),
+          )
+        else
         GestureDetector(
           onTap: _sending ? null : () => _send(),
           child: AnimatedContainer(
@@ -630,13 +760,34 @@ class _ChatBubble extends StatelessWidget {
                       offset: const Offset(0, 2))
                 ],
               ),
-              child: msg.hasImage
-                  ? _buildImageBubble(context, isMe, time)
-                  : _buildTextBubble(isMe, time),
+              child: msg.hasAudio
+                  ? _buildAudioBubble(isMe, time)
+                  : msg.hasImage
+                      ? _buildImageBubble(context, isMe, time)
+                      : _buildTextBubble(isMe, time),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildAudioBubble(bool isMe, String time) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 8, 14, 8),
+      child: Column(
+          crossAxisAlignment:
+              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            VoiceNotePlayer(
+                dataUri: msg.audioUrl, seconds: msg.audioSeconds, light: isMe),
+            const SizedBox(height: 2),
+            Text(time,
+                style: GoogleFonts.inter(
+                    fontSize: 10,
+                    color: isMe ? Colors.white54 : AppTheme.textMute,
+                    fontWeight: FontWeight.w300)),
+          ]),
     );
   }
 

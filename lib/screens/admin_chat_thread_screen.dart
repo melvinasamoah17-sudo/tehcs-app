@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_theme.dart';
 import '../models/chat_message.dart';
+import '../services/call_service.dart';
+import '../widgets/voice_note.dart';
 
 class AdminChatThreadScreen extends StatefulWidget {
   final String clientUid;
@@ -23,6 +25,57 @@ class AdminChatThreadScreen extends StatefulWidget {
 class _AdminChatThreadScreenState extends State<AdminChatThreadScreen> {
   final _msgCtrl = TextEditingController();
   final _scroll = ScrollController();
+  final _recorder = VoiceRecorder();
+  bool _recording = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _recorder.onMaxReached = _stopAndSendVoice;
+    _msgCtrl.addListener(() => setState(() {}));
+  }
+
+  Future<void> _startRecording() async {
+    if (!await _recorder.start()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Please allow microphone access to send voice notes.')));
+      }
+      return;
+    }
+    if (mounted) setState(() => _recording = true);
+  }
+
+  Future<void> _cancelRecording() async {
+    await _recorder.cancel();
+    if (mounted) setState(() => _recording = false);
+  }
+
+  Future<void> _stopAndSendVoice() async {
+    if (!_recording) return;
+    setState(() => _recording = false);
+    final staffUser = FirebaseAuth.instance.currentUser;
+    try {
+      final note = await _recorder.stop();
+      if (note == null || staffUser == null) return;
+      await FirebaseFirestore.instance.collection('chats').add({
+        'uid': widget.clientUid,
+        'name': widget.clientName,
+        'email': widget.clientEmail,
+        'text': '🎤 Voice note',
+        'from': 'staff',
+        'repliedBy': staffUser.email ?? staffUser.displayName ?? 'Staff',
+        'audioUrl': note.dataUri,
+        'audioSeconds': note.seconds,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not send voice note.')));
+      }
+    }
+  }
 
   void _send() async {
     final text = _msgCtrl.text.trim();
@@ -54,6 +107,7 @@ class _AdminChatThreadScreenState extends State<AdminChatThreadScreen> {
   void dispose() {
     _msgCtrl.dispose();
     _scroll.dispose();
+    _recorder.dispose();
     super.dispose();
   }
 
@@ -71,6 +125,20 @@ class _AdminChatThreadScreenState extends State<AdminChatThreadScreen> {
               Text(widget.clientEmail, style: GoogleFonts.nunito(fontSize: 11, color: Colors.white54)),
           ],
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Voice call',
+            icon: const Icon(Icons.call_outlined, color: Colors.white),
+            onPressed: () => CallService.callCustomer(context,
+                uid: widget.clientUid, name: widget.clientName, video: false),
+          ),
+          IconButton(
+            tooltip: 'Video call',
+            icon: const Icon(Icons.videocam_outlined, color: Colors.white),
+            onPressed: () => CallService.callCustomer(context,
+                uid: widget.clientUid, name: widget.clientName, video: true),
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -111,7 +179,9 @@ class _AdminChatThreadScreenState extends State<AdminChatThreadScreen> {
   Widget _buildInput() => Container(
     padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
     decoration: const BoxDecoration(color: AppTheme.white, border: Border(top: BorderSide(color: AppTheme.border))),
-    child: Row(
+    child: _recording
+      ? RecordingBar(recorder: _recorder, onCancel: _cancelRecording, onSend: _stopAndSendVoice)
+      : Row(
       children: [
         Expanded(
           child: Container(
@@ -137,11 +207,12 @@ class _AdminChatThreadScreenState extends State<AdminChatThreadScreen> {
         ),
         const SizedBox(width: 10),
         GestureDetector(
-          onTap: _send,
+          onTap: _msgCtrl.text.trim().isEmpty ? _startRecording : _send,
           child: Container(
             width: 44, height: 44,
             decoration: const BoxDecoration(color: AppTheme.navy, shape: BoxShape.circle),
-            child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+            child: Icon(_msgCtrl.text.trim().isEmpty ? Icons.mic_rounded : Icons.send_rounded,
+                color: Colors.white, size: 20),
           ),
         ),
       ],
@@ -178,7 +249,10 @@ class _StaffViewBubble extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(msg.text, style: GoogleFonts.nunito(fontSize: 14, color: isStaffMsg ? Colors.white : AppTheme.navyDark, height: 1.45)),
+            if (msg.hasAudio)
+              VoiceNotePlayer(dataUri: msg.audioUrl, seconds: msg.audioSeconds, light: isStaffMsg)
+            else
+              Text(msg.text, style: GoogleFonts.nunito(fontSize: 14, color: isStaffMsg ? Colors.white : AppTheme.navyDark, height: 1.45)),
             const SizedBox(height: 4),
             Text(isStaffMsg ? 'You' : 'Client',
               style: GoogleFonts.barlowCondensed(fontSize: 9, fontWeight: FontWeight.w700, color: isStaffMsg ? Colors.white54 : AppTheme.textMute, letterSpacing: 0.5),

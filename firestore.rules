@@ -68,7 +68,11 @@ service cloud.firestore {
 
     // 5b. Admin notifications (staff accept a job / clock in)
     match /notifications/{docId} {
-      allow create: if isStaff();
+      // Staff actions, plus customers' "incoming call" alerts to the admin
+      allow create: if isStaff() || (request.auth != null &&
+        request.resource.data.forAdmin == true &&
+        request.resource.data.type == 'customer_call' &&
+        request.resource.data.staffId == request.auth.uid);
       allow read, update, delete: if request.auth != null &&
         request.auth.token.email == 'twitchempireinfo@gmail.com';
     }

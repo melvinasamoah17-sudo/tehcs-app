@@ -15,6 +15,17 @@ subprojects {
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
+// Some plugins (e.g. the ZEGOCLOUD call kit) still declare an old compileSdk;
+// compile every Android library against the same SDK as the app.
+subprojects {
+    afterEvaluate {
+        if (plugins.hasPlugin("com.android.library")) {
+            extensions.getByName("android").withGroovyBuilder {
+                "compileSdkVersion"(36)
+            }
+        }
+    }
+}
 subprojects {
     project.evaluationDependsOn(":app")
 }

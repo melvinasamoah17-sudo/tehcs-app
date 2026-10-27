@@ -29,7 +29,9 @@ workflows:
       - name: Build simulator app
         script: |
           flutter build ios --simulator --debug \
-            --dart-define=VERIFY_AFRICA_API_KEY=$VERIFY_AFRICA_API_KEY
+            --dart-define=VERIFY_AFRICA_API_KEY=$VERIFY_AFRICA_API_KEY \
+            --dart-define=ZEGO_APP_ID=$ZEGO_APP_ID \
+            --dart-define=ZEGO_APP_SIGN=$ZEGO_APP_SIGN
           cd build/ios/iphonesimulator && zip -r "$CM_BUILD_DIR/TEHCS-simulator.zip" Runner.app
     artifacts:
       - TEHCS-simulator.zip
@@ -67,6 +69,8 @@ workflows:
           flutter build ipa --release \
             --build-number=$((BUILD_NUMBER + 10)) \
             --dart-define=VERIFY_AFRICA_API_KEY=$VERIFY_AFRICA_API_KEY \
+            --dart-define=ZEGO_APP_ID=$ZEGO_APP_ID \
+            --dart-define=ZEGO_APP_SIGN=$ZEGO_APP_SIGN \
             --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
