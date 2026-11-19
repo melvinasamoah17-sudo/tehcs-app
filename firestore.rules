@@ -11,6 +11,12 @@ service cloud.firestore {
       );
     }
 
+    // Helper: the business owner / admin account
+    function isAdmin() {
+      return request.auth != null &&
+        request.auth.token.email == 'twitchempireinfo@gmail.com';
+    }
+
     // 1. Enquiries (from tehcs.com contact form)
     match /enquiries/{docId} {
       allow create: if true; // Public can submit
@@ -43,13 +49,16 @@ service cloud.firestore {
     match /bookings/{docId} {
       allow create: if request.auth != null;
       allow read, update: if isStaff() || (request.auth != null && (resource == null || resource.data.uid == request.auth.uid));
-      allow delete: if isStaff();
+      // Only the admin can delete bookings (after exporting records)
+      allow delete: if isAdmin();
     }
 
     // 5. Clients (App Profiles)
     match /clients/{docId} {
       allow create: if request.auth != null;
       allow read, update: if isStaff() || (request.auth != null && (resource == null || resource.data.uid == request.auth.uid || docId == request.auth.uid));
+      // Customers can delete their own profile (in-app account deletion)
+      allow delete: if isStaff() || (request.auth != null && (resource.data.uid == request.auth.uid || docId == request.auth.uid));
     }
 
     // 5a. Phone push tokens (each user writes only their own)
@@ -75,16 +84,12 @@ service cloud.firestore {
       allow create: if request.auth != null;
       // Fixed: removed resource == null on reads so users can't read other people's chats
       allow read, update: if isStaff() || (request.auth != null && resource != null && resource.data.uid == request.auth.uid);
-      allow delete: if isStaff();
+      allow delete: if isStaff() || (request.auth != null && resource.data.uid == request.auth.uid);
     }
 
     // 7. Voice/video calls (customers call the admin; the admin can call back).
     //    The Agora channel is the doc id; tokens come from getAgoraToken.
     match /calls/{callId} {
-      function isAdmin() {
-        return request.auth != null &&
-          request.auth.token.email == 'twitchempireinfo@gmail.com';
-      }
       function isParty() {
         return request.auth != null && (
           resource.data.callerUid == request.auth.uid ||

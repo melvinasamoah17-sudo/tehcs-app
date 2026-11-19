@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -92,7 +95,7 @@ class _VoiceNotePlayerState extends State<VoiceNotePlayer> {
     }
     setState(() => _loading = true);
     try {
-      await _player.play(UrlSource(widget.url));
+      await _player.play(await _source());
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -101,6 +104,20 @@ class _VoiceNotePlayerState extends State<VoiceNotePlayer> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Storage URLs stream directly. Older notes were saved inline as
+  /// data:audio/...;base64 URIs; write those to a temp file and play that.
+  Future<Source> _source() async {
+    final url = widget.url;
+    if (!url.startsWith('data:')) return UrlSource(url);
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/vn_${url.hashCode.toUnsigned(32)}.m4a');
+    if (!await file.exists()) {
+      final comma = url.indexOf(',');
+      await file.writeAsBytes(base64Decode(url.substring(comma + 1)));
+    }
+    return DeviceFileSource(file.path);
   }
 
   @override

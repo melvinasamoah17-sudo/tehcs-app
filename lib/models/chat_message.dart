@@ -8,7 +8,9 @@ class ChatMessage {
   final String text;
   final String from; // 'client' or 'agent'/'staff'
   final String imageUrl; // '' when no image
-  final String audioUrl; // '' when not a voice note
+  // '' when not a voice note. A Storage https URL, or (older notes) an
+  // inline data:audio/mp4;base64,... URI.
+  final String audioUrl;
   final int audioMs; // voice note length
   final String type; // 'text' | 'voice' | 'call'
   final bool callVideo; // for type == 'call'
@@ -45,7 +47,8 @@ class ChatMessage {
       from: data['from'] ?? 'client',
       imageUrl: data['imageUrl'] ?? '',
       audioUrl: data['audioUrl'] ?? '',
-      audioMs: (data['audioMs'] as num?)?.toInt() ?? 0,
+      audioMs: (data['audioMs'] as num?)?.toInt() ??
+          (((data['audioSeconds'] as num?)?.toInt() ?? 0) * 1000),
       type: data['type'] ?? 'text',
       callVideo: data['callVideo'] == true,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),

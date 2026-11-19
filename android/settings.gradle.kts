@@ -22,6 +22,9 @@ plugins {
     id("com.android.application") version "8.13.2" apply false
     id("com.google.gms.google-services") version "4.4.2" apply false
     id("org.jetbrains.kotlin.android") version "2.2.20" apply false
+    // Lets Gradle download a JDK when a plugin asks for a specific Java
+    // version (flutter_callkit_incoming, used for call ringing, needs 17)
+    id("org.gradle.toolchains.foojay-resolver-convention") version "0.10.0"
 }
 
 include(":app")
