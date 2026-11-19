@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
 import '../models/chat_message.dart';
 import '../services/call_service.dart';
+import '../services/chat_service.dart';
 import '../services/voice_note_service.dart';
 import '../widgets/chat_media.dart';
 
@@ -78,6 +79,43 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) _showError('Could not send voice message.');
     }
     if (mounted) setState(() => _sending = false);
+  }
+
+  // ─── Delete ──────────────────────────────────────────────────────────────
+  Future<void> _deleteMessage(ChatMessage m) async {
+    if (!await showMessageActions(context,
+        copyText: m.hasAudio || m.hasImage ? null : m.text)) {
+      return;
+    }
+    try {
+      await ChatService.deleteMessage(m.id, audioUrl: m.audioUrl);
+    } catch (_) {
+      if (mounted) _showError('Could not delete the message.');
+    }
+  }
+
+  Future<void> _deleteChat() async {
+    final user = _user;
+    if (user == null) return;
+    final ok = await confirmDelete(context,
+        title: 'Delete chat?',
+        message:
+            'All messages, photos and voice notes in this chat will be deleted '
+            'for you and for TEHCS Support. This cannot be undone.');
+    if (!ok) return;
+    try {
+      await ChatService.deleteConversation(user.uid);
+      if (mounted) setState(() => _showChips = true);
+    } catch (_) {
+      if (mounted) _showError('Could not delete the chat. Please try again.');
+    }
+  }
+
+  Future<void> _openWhatsApp() async {
+    final uri = Uri.parse('https://wa.me/233240699329');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   // ─── Voice / video call to TEHCS (admin) ─────────────────────────────────
@@ -298,22 +336,35 @@ class _ChatScreenState extends State<ChatScreen> {
                   icon: Icons.videocam_rounded,
                   tooltip: 'Video call',
                   onTap: () => _call(video: true)),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () async {
-                  final uri = Uri.parse('https://wa.me/233240699329');
-                  if (await canLaunchUrl(uri))
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+              const SizedBox(width: 4),
+              PopupMenuButton<String>(
+                tooltip: 'More',
+                icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+                onSelected: (v) {
+                  if (v == 'whatsapp') _openWhatsApp();
+                  if (v == 'delete') _deleteChat();
                 },
-                child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                        color: const Color(0xFF25D366).withOpacity(.2),
-                        borderRadius: BorderRadius.circular(10)),
-                    child: const Center(
-                        child: Icon(Icons.chat_bubble_rounded,
-                            size: 18, color: Color(0xFF25D366)))),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: 'whatsapp',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.chat_bubble_rounded,
+                          color: Color(0xFF25D366)),
+                      title: Text('Chat on WhatsApp'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.delete_outline_rounded,
+                          color: AppTheme.red),
+                      title: Text('Delete chat',
+                          style: TextStyle(color: AppTheme.red)),
+                    ),
+                  ),
+                ],
               ),
             ]),
           )),
@@ -386,7 +437,11 @@ class _ChatScreenState extends State<ChatScreen> {
               if (showDate)
                 _DateDivider(
                     ts: (docs[i].data() as Map)['createdAt'] as Timestamp?),
-              _ChatBubble(msg: m),
+              GestureDetector(
+                // Customers can delete their own messages.
+                onLongPress: m.isClient ? () => _deleteMessage(m) : null,
+                child: _ChatBubble(msg: m),
+              ),
             ]);
           },
         );

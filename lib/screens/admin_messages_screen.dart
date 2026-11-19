@@ -3,6 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_theme.dart';
 import 'admin_chat_thread_screen.dart';
+import '../services/call_service.dart';
+import '../services/chat_service.dart';
+import '../widgets/chat_media.dart';
 
 class AdminMessagesScreen extends StatelessWidget {
   const AdminMessagesScreen({super.key});
@@ -74,6 +77,24 @@ class AdminMessagesScreen extends StatelessWidget {
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => AdminChatThreadScreen(clientUid: uid, clientName: name, clientEmail: email)),
                 ),
+                // Admin: long-press a conversation to delete it.
+                onLongPress: CallService.isAdmin
+                    ? () async {
+                        final ok = await confirmDelete(context,
+                            title: 'Delete chat?',
+                            message: 'All messages with $name will be deleted '
+                                'for you and for the customer. This cannot be undone.');
+                        if (!ok) return;
+                        try {
+                          await ChatService.deleteConversation(uid);
+                        } catch (_) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                content: Text('Could not delete the chat.')));
+                          }
+                        }
+                      }
+                    : null,
               ),
             );
           },

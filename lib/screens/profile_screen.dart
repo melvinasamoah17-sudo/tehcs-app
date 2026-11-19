@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_theme.dart';
 import 'auth/login_screen.dart';
+import '../services/chat_service.dart';
 import '../services/auth_routing.dart';
 import '../services/contact_helper.dart';
 import '../services/region_service.dart';
@@ -261,8 +262,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 fontSize: 20, fontWeight: FontWeight.w900, color: AppTheme.red)),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           Text(
-              'This permanently deletes your TEHCS account, your profile and your '
-              'support messages. This cannot be undone.\n\n'
+              'This permanently deletes your TEHCS account, your profile, your '
+              'support chat (messages, photos and voice notes) and your call '
+              'history. This cannot be undone.\n\n'
               'Past booking records are kept for our business records.',
               style: GoogleFonts.inter(fontSize: 14, color: AppTheme.textMid)),
           if (usesPassword) ...[
@@ -332,12 +334,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     try {
       final db = FirebaseFirestore.instance;
-      final chats =
-          await db.collection('chats').where('uid', isEqualTo: user.uid).get();
+      // Chat thread (any length), voice-note files and call records.
+      await ChatService.deleteAllForAccount(user.uid);
       final batch = db.batch();
-      for (final d in chats.docs) {
-        batch.delete(d.reference);
-      }
       batch.delete(db.collection('clients').doc(user.uid));
       batch.delete(db.collection('device_tokens').doc(user.uid));
       await batch.commit();

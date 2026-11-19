@@ -12,13 +12,24 @@ service firebase.storage {
                    && request.resource.contentType.matches('image/.*');
     }
 
-    // Chat voice notes — same access model as chat images.
-    match /chat_audio/{userId}/{fileName} {
-      allow read:  if request.auth != null;
-      allow write: if request.auth != null
-                   && request.auth.uid == userId
-                   && request.resource.size < 10 * 1024 * 1024
-                   && request.resource.contentType.matches('audio/.*');
+    // Staff/admin (same definition as isStaff() in firestore.rules).
+    function isStaff() {
+      return request.auth != null && (
+        request.auth.token.email == 'twitchempireinfo@gmail.com' ||
+        firestore.exists(/databases/(default)/documents/staff/$(request.auth.uid)));
+    }
+
+    // Chat voice notes, one folder per customer thread ({clientUid}).
+    // The customer and staff can add notes and delete them (delete message /
+    // delete chat / delete account).
+    match /chat_audio/{clientUid}/{fileName} {
+      allow read:   if request.auth != null;
+      allow create: if request.auth != null
+                    && (request.auth.uid == clientUid || isStaff())
+                    && request.resource.size < 10 * 1024 * 1024
+                    && request.resource.contentType.matches('audio/.*');
+      allow delete: if request.auth != null
+                    && (request.auth.uid == clientUid || isStaff());
     }
 
     // Catch-all: deny everything else by default

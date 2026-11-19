@@ -404,3 +404,78 @@ class _BlinkingDotState extends State<_BlinkingDot>
         ),
       );
 }
+
+// ══════════════════════════════════════════
+// DELETE HELPERS
+// ══════════════════════════════════════════
+/// "Are you sure?" dialog with a red Delete button. Returns true to delete.
+Future<bool> confirmDelete(BuildContext context,
+    {required String title, required String message}) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      title: Text(title,
+          style: GoogleFonts.poppins(
+              fontSize: 19, fontWeight: FontWeight.w800, color: AppTheme.navyDark)),
+      content: Text(message,
+          style: GoogleFonts.inter(fontSize: 14, color: AppTheme.textMid)),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel',
+                style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w700, color: AppTheme.textMute))),
+        ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.red,
+                shape: const StadiumBorder(),
+                elevation: 0),
+            child: Text('Delete',
+                style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w800, color: Colors.white))),
+      ],
+    ),
+  );
+  return ok == true;
+}
+
+/// Long-press menu for a chat message. Returns true if "Delete" was chosen.
+Future<bool> showMessageActions(BuildContext context, {String? copyText}) async {
+  final choice = await showModalBottomSheet<String>(
+    context: context,
+    shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (ctx) => SafeArea(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const SizedBox(height: 8),
+        if (copyText != null && copyText.isNotEmpty)
+          ListTile(
+            leading: const Icon(Icons.copy_rounded, color: AppTheme.navy),
+            title: const Text('Copy'),
+            onTap: () => Navigator.pop(ctx, 'copy'),
+          ),
+        ListTile(
+          leading: const Icon(Icons.delete_outline_rounded, color: AppTheme.red),
+          title: const Text('Delete for everyone',
+              style: TextStyle(color: AppTheme.red)),
+          onTap: () => Navigator.pop(ctx, 'delete'),
+        ),
+        const SizedBox(height: 8),
+      ]),
+    ),
+  );
+  if (choice == 'copy' && copyText != null) {
+    await Clipboard.setData(ClipboardData(text: copyText));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Copied'), duration: Duration(seconds: 1)));
+    }
+    return false;
+  }
+  if (choice != 'delete' || !context.mounted) return false;
+  return confirmDelete(context,
+      title: 'Delete message?',
+      message: 'This message will be removed for everyone in this chat.');
+}

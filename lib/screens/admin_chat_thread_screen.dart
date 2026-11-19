@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_theme.dart';
 import '../models/chat_message.dart';
 import '../services/call_service.dart';
+import '../services/chat_service.dart';
 import '../services/voice_note_service.dart';
 import '../widgets/chat_media.dart';
 
@@ -56,6 +57,39 @@ class _AdminChatThreadScreenState extends State<AdminChatThreadScreen> {
       }
     }
     if (mounted) setState(() => _sending = false);
+  }
+
+  Future<void> _deleteMessage(ChatMessage m) async {
+    if (!await showMessageActions(context,
+        copyText: m.hasAudio || m.hasImage ? null : m.text)) {
+      return;
+    }
+    try {
+      await ChatService.deleteMessage(m.id, audioUrl: m.audioUrl);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not delete the message.')));
+      }
+    }
+  }
+
+  // Admin only: remove the whole conversation for everyone.
+  Future<void> _deleteChat() async {
+    final ok = await confirmDelete(context,
+        title: 'Delete chat?',
+        message: 'All messages with ${widget.clientName} will be deleted for '
+            'you and for the customer. This cannot be undone.');
+    if (!ok) return;
+    try {
+      await ChatService.deleteConversation(widget.clientUid);
+      if (mounted) Navigator.of(context).pop();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not delete the chat.')));
+      }
+    }
   }
 
   // Admin only: call the customer back (rings while their app is open).
@@ -130,6 +164,25 @@ class _AdminChatThreadScreenState extends State<AdminChatThreadScreen> {
               icon: const Icon(Icons.videocam_rounded, color: Colors.white),
               onPressed: () => _call(video: true),
             ),
+            PopupMenuButton<String>(
+              tooltip: 'More',
+              icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+              onSelected: (v) {
+                if (v == 'delete') _deleteChat();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'delete',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.delete_outline_rounded,
+                        color: AppTheme.red),
+                    title: Text('Delete chat',
+                        style: TextStyle(color: AppTheme.red)),
+                  ),
+                ),
+              ],
+            ),
           ],
         ],
       ),
@@ -157,7 +210,12 @@ class _AdminChatThreadScreenState extends State<AdminChatThreadScreen> {
                   itemCount: docs.length,
                   itemBuilder: (ctx, i) {
                     final m = ChatMessage.fromFirestore(docs[i]);
-                    return _StaffViewBubble(msg: m);
+                    // Admin can delete any message; staff only their replies.
+                    final canDelete = CallService.isAdmin || !m.isClient;
+                    return GestureDetector(
+                      onLongPress: canDelete ? () => _deleteMessage(m) : null,
+                      child: _StaffViewBubble(msg: m),
+                    );
                   },
                 );
               },

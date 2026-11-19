@@ -111,8 +111,10 @@ class VoiceNoteService {
     final me = FirebaseAuth.instance.currentUser;
     if (me == null) throw StateError('Not signed in');
 
+    // Stored under the customer's thread folder, so the customer or staff
+    // can delete the whole conversation's files later.
     final ref = FirebaseStorage.instance.ref(
-        'chat_audio/${me.uid}/${DateTime.now().millisecondsSinceEpoch}.m4a');
+        'chat_audio/$clientUid/${me.uid}_${DateTime.now().millisecondsSinceEpoch}.m4a');
     await ref.putFile(clip.file, SettableMetadata(contentType: 'audio/mp4'));
     final url = await ref.getDownloadURL();
 
