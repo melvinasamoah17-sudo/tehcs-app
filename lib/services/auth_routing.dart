@@ -4,18 +4,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../screens/auth/verify_email_screen.dart';
 import '../screens/main_screen.dart';
 import '../screens/admin_panel.dart';
-import '../screens/verify/verify_africa_screen.dart';
 import 'region_service.dart';
 
 const String kPrimaryAdminEmail = 'twitchempireinfo@gmail.com';
-
-/// When true, customers must verify their identity at sign-up before using
-/// the app. Off: they verify later from Profile → "Verify My Identity".
-/// Ghana only for now — UK verification will be added later.
-const bool kRequireIdVerification = false;
-
-bool get idVerificationRequired =>
-    kRequireIdVerification && !RegionService.current.isUK;
 
 enum UserRole { client, staff, admin }
 
@@ -51,9 +42,6 @@ Future<Widget> resolveHomeScreen(User user) async {
     await _ensureClientProfile(refreshed);
     final ref = db.collection('clients').doc(refreshed.uid);
     await RegionService.syncFromProfile(ref);
-    if (idVerificationRequired && !await _isIdVerified(ref)) {
-      return const VerifyAfricaScreen(role: 'customer', onboarding: true);
-    }
     return const MainScreen(role: 'customer');
   }
 
@@ -66,15 +54,6 @@ bool _isSocialProvider(User user) {
       .any((p) => p.providerId == 'google.com' ||
       p.providerId == 'apple.com' ||
       p.providerId == 'phone');
-}
-
-Future<bool> _isIdVerified(DocumentReference<Map<String, dynamic>> ref) async {
-  try {
-    final d = (await ref.get()).data() ?? {};
-    return d['id_verified'] == true || d['liveness_verified'] == true;
-  } catch (_) {
-    return false;
-  }
 }
 
 Future<void> _ensureClientProfile(User user) async {

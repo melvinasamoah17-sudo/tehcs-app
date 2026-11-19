@@ -13,7 +13,6 @@ import '../../theme/app_theme.dart';
 import '../../services/auth_routing.dart';
 import '../../services/phone_auth_helper.dart';
 import '../../services/region_service.dart';
-import '../verify/verify_africa_screen.dart';
 import 'verify_email_screen.dart';
 import '../../widgets/blur_slideshow.dart';
 import 'login_screen.dart';
@@ -193,11 +192,8 @@ class _RegisterScreenState extends State<RegisterScreen>
       });
 
       if (!mounted) return;
-      // Identity verification is part of sign-up (Ghana); email check follows.
       Navigator.of(context).pushReplacement(MaterialPageRoute(
-          builder: (_) => idVerificationRequired
-              ? const VerifyAfricaScreen(role: 'customer', onboarding: true)
-              : const VerifyEmailScreen(role: 'customer')));
+          builder: (_) => const VerifyEmailScreen(role: 'customer')));
     } on FirebaseAuthException catch (e) {
       _setErr(switch (e.code) {
         'email-already-in-use' => 'An account already exists with this email.',

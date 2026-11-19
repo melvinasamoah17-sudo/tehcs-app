@@ -4,7 +4,7 @@
 #   1. Teams > Integrations > Developer Portal: add an App Store Connect API key
 #      and name it exactly "TEHCS App Store Connect".
 #   2. App settings > Environment variables: create a group named "tehcs_secrets"
-#      with VERIFY_AFRICA_API_KEY (mark it Secure).
+#      (currently no variables are required; add app secrets here when needed).
 #   3. In App Store Connect, create the app with bundle ID com.tehcs.app.
 
 workflows:
@@ -28,8 +28,7 @@ workflows:
         script: cd ios && pod install --repo-update
       - name: Build simulator app
         script: |
-          flutter build ios --simulator --debug \
-            --dart-define=VERIFY_AFRICA_API_KEY=$VERIFY_AFRICA_API_KEY
+          flutter build ios --simulator --debug
           cd build/ios/iphonesimulator && zip -r "$CM_BUILD_DIR/TEHCS-simulator.zip" Runner.app
     artifacts:
       - TEHCS-simulator.zip
@@ -66,7 +65,6 @@ workflows:
           # Codemagic's build counter keeps each TestFlight upload unique
           flutter build ipa --release \
             --build-number=$((BUILD_NUMBER + 10)) \
-            --dart-define=VERIFY_AFRICA_API_KEY=$VERIFY_AFRICA_API_KEY \
             --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa

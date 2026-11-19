@@ -8,7 +8,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_theme.dart';
 import 'auth/login_screen.dart';
 import '../services/auth_routing.dart';
-import 'verify/verify_africa_screen.dart';
 import '../services/contact_helper.dart';
 import '../services/region_service.dart';
 
@@ -715,33 +714,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
       child: _Section(title: 'Account', children: [
-        // ID verification is Ghana only for now
-        if (!RegionService.current.isUK)
-        _ActionRow(
-          icon: Icons.verified_user_outlined,
-          label: _data['id_verified'] == true
-              ? '✓ Identity Verified'
-              : 'Verify My Identity',
-          color: _data['id_verified'] == true ? AppTheme.green : AppTheme.navy,
-          onTap: _data['id_verified'] == true
-              ? null
-              : () async {
-                  final verified = await Navigator.push<bool>(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => VerifyAfricaScreen(role: _role)));
-                  if (verified == true && mounted) {
-                    setState(() => _data['id_verified'] = true);
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: const Text('Identity verified successfully ✓'),
-                      backgroundColor: AppTheme.green,
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ));
-                  }
-                },
-        ),
         _ActionRow(
             icon: Icons.public,
             label: 'Country: ${RegionService.current.flag} ${RegionService.current.name}',
@@ -1046,12 +1018,10 @@ class _ActionRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
-  final Color? color;
   const _ActionRow(
       {required this.icon,
       required this.label,
-      required this.onTap,
-      this.color});
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) => InkWell(
@@ -1060,7 +1030,7 @@ class _ActionRow extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(children: [
-            Icon(icon, size: 20, color: color ?? AppTheme.navy),
+            Icon(icon, size: 20, color: AppTheme.navy),
             const SizedBox(width: 12),
             Expanded(
                 child: Text(label,
