@@ -1,19 +1,26 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tehcs_app/main.dart';
+import 'package:tehcs_app/screens/splash_screen.dart';
 
 void main() {
-  testWidgets('Splash screen smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const TEHCSApp());
+  setUp(() => SharedPreferences.setMockInitialValues({}));
 
-    // Verify that TEHCS text is shown
-    expect(find.text('TEHCS'), findsWidgets);
+  testWidgets('Splash screen shows TEHCS branding', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: SplashScreen()));
+
+    expect(find.text('TWITCH EMPIRE'), findsOneWidget);
+    expect(find.text('HOME CARE SERVICE'), findsOneWidget);
+
+    // Let the 2s splash delay elapse so no timers are left pending.
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('App shows a readable error when Firebase fails to start',
+      (tester) async {
+    await tester.pumpWidget(const TEHCSApp(firebaseError: 'boom'));
+
+    expect(find.textContaining('Firebase Error: boom'), findsOneWidget);
   });
 }
