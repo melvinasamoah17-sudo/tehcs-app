@@ -32,6 +32,11 @@ dependencies:
   local_auth: ^2.3.0
   cloud_functions: ^6.5.0
   firebase_messaging: ^16.7.0
+  firebase_storage: ^13.6.1
+  record: ^7.2.0
+  audioplayers: ^6.8.1
+  agora_rtc_engine: ^6.6.4
+  permission_handler: ^13.0.2
 
 dev_dependencies:
   flutter_test:

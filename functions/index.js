@@ -3,6 +3,7 @@ const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
+const zlib = require('zlib');
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -174,5 +175,102 @@ exports.onAdminNotification = onDocumentCreated(
     if (!n || !n.forAdmin) return;
     const tokens = await tokensForEmails([ADMIN_EMAIL]);
     await sendPush(tokens, n.title || 'TEHCS update', n.body || '', { type: n.type || '' });
+  },
+);
+
+// ─────────────────────────────────────────────────────────
+// VOICE / VIDEO CALLS (Agora)
+// ─────────────────────────────────────────────────────────
+// Set once with:
+//   firebase functions:secrets:set AGORA_APP_ID
+//   firebase functions:secrets:set AGORA_APP_CERTIFICATE
+const AGORA_APP_ID = defineSecret('AGORA_APP_ID');
+const AGORA_APP_CERTIFICATE = defineSecret('AGORA_APP_CERTIFICATE');
+const CALL_TOKEN_SECONDS = 2 * 60 * 60; // a call can last up to 2 hours
+
+// Agora AccessToken2 ("007") for RTC, built with Node's own crypto/zlib so
+// no extra npm package is needed. Same format as agora-token's
+// RtcTokenBuilder.buildTokenWithUid(..., RtcRole.PUBLISHER, ...).
+function buildAgoraRtcToken(appId, appCert, channel, uid, expireSeconds) {
+  const u16 = (n) => { const b = Buffer.alloc(2); b.writeUInt16LE(n); return b; };
+  const u32 = (n) => { const b = Buffer.alloc(4); b.writeUInt32LE(n >>> 0); return b; };
+  const str = (v) => {
+    const b = Buffer.isBuffer(v) ? v : Buffer.from(String(v), 'utf8');
+    return Buffer.concat([u16(b.length), b]);
+  };
+  const hmac = (key, msg) => crypto.createHmac('sha256', key).update(msg).digest();
+
+  const issueTs = Math.floor(Date.now() / 1000);
+  const salt = crypto.randomInt(1, 99999999);
+  // Privileges: 1 join channel, 2 publish audio, 3 publish video, 4 publish data.
+  const privileges = [1, 2, 3, 4];
+  const rtcService = Buffer.concat([
+    u16(1), // service type: RTC
+    u16(privileges.length),
+    ...privileges.flatMap((p) => [u16(p), u32(expireSeconds)]),
+    str(channel),
+    str(uid === 0 ? '' : String(uid)),
+  ]);
+  const signingInfo = Buffer.concat([
+    str(appId), u32(issueTs), u32(expireSeconds), u32(salt), u16(1), rtcService,
+  ]);
+  let signing = hmac(u32(issueTs), appCert);
+  signing = hmac(u32(salt), signing);
+  const signature = hmac(signing, signingInfo);
+  const content = Buffer.concat([str(signature), signingInfo]);
+  return '007' + zlib.deflateSync(content).toString('base64');
+}
+
+// Returns what the app needs to join the Agora channel for a call it is part of.
+exports.getAgoraToken = onCall(
+  { secrets: [AGORA_APP_ID, AGORA_APP_CERTIFICATE] },
+  async (req) => {
+    if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in first.');
+    const callId = String(req.data?.callId || '');
+    if (!callId) throw new HttpsError('invalid-argument', 'Missing callId.');
+
+    const snap = await db.collection('calls').doc(callId).get();
+    if (!snap.exists) throw new HttpsError('not-found', 'Call not found.');
+    const c = snap.data();
+    if (!['ringing', 'accepted'].includes(c.status)) {
+      throw new HttpsError('failed-precondition', 'This call has ended.');
+    }
+
+    const uid = req.auth.uid;
+    const email = (req.auth.token.email || '').toLowerCase();
+    const isCaller = c.callerUid === uid;
+    const isCallee = c.calleeUid === uid || (c.toAdmin === true && email === ADMIN_EMAIL);
+    if (!isCaller && !isCallee) {
+      throw new HttpsError('permission-denied', 'You are not part of this call.');
+    }
+
+    const agoraUid = isCaller ? 1 : 2;
+    const appId = AGORA_APP_ID.value().trim();
+    const token = buildAgoraRtcToken(
+      appId, AGORA_APP_CERTIFICATE.value().trim(), callId, agoraUid, CALL_TOKEN_SECONDS);
+    return { appId, token, uid: agoraUid, channel: callId };
+  },
+);
+
+// New call -> push to whoever is being called, so a backgrounded phone
+// shows "Incoming call"; opening the app while it's ringing shows the call.
+exports.onCallCreated = onDocumentCreated(
+  { document: 'calls/{id}', region: FIRESTORE_REGION },
+  async (event) => {
+    const c = event.data && event.data.data();
+    if (!c || c.status !== 'ringing') return;
+    let tokens = [];
+    if (c.toAdmin) {
+      tokens = await tokensForEmails([ADMIN_EMAIL]);
+    } else if (c.calleeUid) {
+      const d = await db.collection('device_tokens').doc(c.calleeUid).get();
+      tokens = (d.exists && d.data().tokens) || [];
+    }
+    await sendPush(
+      tokens,
+      c.video ? 'Incoming video call' : 'Incoming voice call',
+      `${c.callerName || 'Someone'} is calling you on TEHCS`,
+      { type: 'call', callId: event.params.id },
+    );
   },
 );

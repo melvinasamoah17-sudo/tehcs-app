@@ -9,7 +9,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
 import '../models/chat_message.dart';
-import '../services/contact_helper.dart';
+import '../services/call_service.dart';
+import '../services/voice_note_service.dart';
+import '../widgets/chat_media.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -20,8 +22,10 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final _msgCtrl = TextEditingController();
   final _scroll = ScrollController();
+  final _recorder = VoiceRecorder();
   bool _sending = false;
   bool _showChips = true;
+  bool _hasText = false;
 
   User? get _user => FirebaseAuth.instance.currentUser;
 
@@ -34,10 +38,61 @@ class _ChatScreenState extends State<ChatScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _msgCtrl.addListener(() {
+      final has = _msgCtrl.text.trim().isNotEmpty;
+      if (has != _hasText) setState(() => _hasText = has);
+    });
+  }
+
+  @override
   void dispose() {
     _msgCtrl.dispose();
     _scroll.dispose();
+    _recorder.dispose();
     super.dispose();
+  }
+
+  String get _myName =>
+      _user?.displayName ?? _user?.email?.split('@').first ?? 'User';
+
+  // ─── Voice note ──────────────────────────────────────────────────────────
+  Future<void> _sendVoice(VoiceClip clip) async {
+    final user = _user;
+    if (user == null) return;
+    setState(() {
+      _sending = true;
+      _showChips = false;
+    });
+    try {
+      await VoiceNoteService.send(
+        clip: clip,
+        clientUid: user.uid,
+        clientName: _myName,
+        clientEmail: user.email ?? '',
+        from: 'client',
+      );
+      _scrollToBottom();
+    } catch (e) {
+      if (mounted) _showError('Could not send voice message.');
+    }
+    if (mounted) setState(() => _sending = false);
+  }
+
+  // ─── Voice / video call to TEHCS (admin) ─────────────────────────────────
+  void _call({required bool video}) {
+    final user = _user;
+    if (user == null) return;
+    CallService.start(
+      context,
+      video: video,
+      toAdmin: true,
+      peerName: 'TEHCS Support',
+      clientUid: user.uid,
+      clientName: _myName,
+      clientEmail: user.email ?? '',
+    );
   }
 
   // ─── Send text message ───────────────────────────────────────────────────
@@ -234,17 +289,15 @@ class _ChatScreenState extends State<ChatScreen> {
                               fontWeight: FontWeight.w300)),
                     ]),
                   ])),
-              GestureDetector(
-                onTap: () => ContactHelper.callOffice(context),
-                child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(.1),
-                        borderRadius: BorderRadius.circular(10)),
-                    child: const Icon(Icons.phone_outlined,
-                        color: Colors.white70, size: 18)),
-              ),
+              _HeaderIcon(
+                  icon: Icons.call_rounded,
+                  tooltip: 'Voice call',
+                  onTap: () => _call(video: false)),
+              const SizedBox(width: 8),
+              _HeaderIcon(
+                  icon: Icons.videocam_rounded,
+                  tooltip: 'Video call',
+                  onTap: () => _call(video: true)),
               const SizedBox(width: 8),
               GestureDetector(
                 onTap: () async {
@@ -397,80 +450,114 @@ class _ChatScreenState extends State<ChatScreen> {
         color: AppTheme.white,
         border: Border(top: BorderSide(color: AppTheme.border)),
       ),
-      child: Row(children: [
-        // Camera / Gallery button
-        GestureDetector(
-          onTap: _sending ? null : _showImageOptions,
-          child: Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: AppTheme.navy.withOpacity(.08),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppTheme.navy.withOpacity(.15)),
-            ),
-            child: _sending
-                ? const Padding(
-                    padding: EdgeInsets.all(11),
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: AppTheme.navy))
-                : const Icon(Icons.camera_alt_rounded,
+      child: ListenableBuilder(
+        listenable: _recorder,
+        builder: (_, __) => Row(children: [
+          if (_recorder.recording)
+            Expanded(child: RecordingStrip(recorder: _recorder))
+          else ...[
+            // Camera / Gallery button
+            GestureDetector(
+              onTap: _sending ? null : _showImageOptions,
+              child: Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: AppTheme.navy.withOpacity(.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.navy.withOpacity(.15)),
+                ),
+                child: const Icon(Icons.camera_alt_rounded,
                     color: AppTheme.navy, size: 22),
-          ),
-        ),
-        const SizedBox(width: 8),
-        // Text field
-        Expanded(
-          child: Container(
-            decoration: BoxDecoration(
-                color: AppTheme.offWhite,
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: AppTheme.border)),
-            child: TextField(
-              controller: _msgCtrl,
-              maxLines: 4,
-              minLines: 1,
-              onTap: () => setState(() => _showChips = false),
-              style: GoogleFonts.inter(fontSize: 14, color: AppTheme.navyDark),
-              decoration: InputDecoration(
-                hintText: 'Type your message...',
-                hintStyle: GoogleFonts.inter(
-                    fontSize: 14,
-                    color: AppTheme.textMute,
-                    fontWeight: FontWeight.w300),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               ),
-              onSubmitted: (_) => _send(),
             ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        // Send button
-        GestureDetector(
-          onTap: _sending ? null : () => _send(),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: _sending ? AppTheme.navy.withOpacity(.5) : AppTheme.navy,
-              shape: BoxShape.circle,
+            const SizedBox(width: 8),
+            // Text field
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                    color: AppTheme.offWhite,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: AppTheme.border)),
+                child: TextField(
+                  controller: _msgCtrl,
+                  maxLines: 4,
+                  minLines: 1,
+                  onTap: () => setState(() => _showChips = false),
+                  style:
+                      GoogleFonts.inter(fontSize: 14, color: AppTheme.navyDark),
+                  decoration: InputDecoration(
+                    hintText: 'Type your message...',
+                    hintStyle: GoogleFonts.inter(
+                        fontSize: 14,
+                        color: AppTheme.textMute,
+                        fontWeight: FontWeight.w300),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                  ),
+                  onSubmitted: (_) => _send(),
+                ),
+              ),
             ),
-            child: _sending
-                ? const Padding(
-                    padding: EdgeInsets.all(10),
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
-          ),
-        ),
-      ]),
+          ],
+          const SizedBox(width: 8),
+          // Send (when typing) or hold-to-record mic (when empty)
+          if (_sending)
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                  color: AppTheme.navy.withOpacity(.5),
+                  shape: BoxShape.circle),
+              child: const Padding(
+                  padding: EdgeInsets.all(10),
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white)),
+            )
+          else if (_hasText)
+            GestureDetector(
+              onTap: () => _send(),
+              child: Container(
+                width: 42,
+                height: 42,
+                decoration: const BoxDecoration(
+                    color: AppTheme.navy, shape: BoxShape.circle),
+                child: const Icon(Icons.send_rounded,
+                    color: Colors.white, size: 20),
+              ),
+            )
+          else
+            HoldToRecordButton(recorder: _recorder, onRecorded: _sendVoice),
+        ]),
+      ),
     );
   }
+}
+
+class _HeaderIcon extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  const _HeaderIcon(
+      {required this.icon, required this.tooltip, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: tooltip,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(.1),
+                  borderRadius: BorderRadius.circular(10)),
+              child: Icon(icon, color: Colors.white, size: 19)),
+        ),
+      );
 }
 
 // ══════════════════════════════════════════
@@ -585,6 +672,7 @@ class _ChatBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (msg.isCallLog) return CallLogChip(msg: msg);
     final isMe = msg.isClient;
     final time =
         msg.createdAt != null ? DateFormat('HH:mm').format(msg.createdAt!) : '';
@@ -630,9 +718,11 @@ class _ChatBubble extends StatelessWidget {
                       offset: const Offset(0, 2))
                 ],
               ),
-              child: msg.hasImage
-                  ? _buildImageBubble(context, isMe, time)
-                  : _buildTextBubble(isMe, time),
+              child: msg.hasAudio
+                  ? _buildVoiceBubble(isMe, time)
+                  : msg.hasImage
+                      ? _buildImageBubble(context, isMe, time)
+                      : _buildTextBubble(isMe, time),
             ),
           ),
         ],
@@ -675,6 +765,24 @@ class _ChatBubble extends StatelessWidget {
                     size: 13, color: AppTheme.green),
               ],
             ]),
+          ]),
+    );
+  }
+
+  Widget _buildVoiceBubble(bool isMe, String time) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 12, 6),
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            VoiceNotePlayer(
+                url: msg.audioUrl, durationMs: msg.audioMs, onDark: isMe),
+            Text(time,
+                style: GoogleFonts.inter(
+                    fontSize: 10,
+                    color: isMe ? Colors.white54 : AppTheme.textMute,
+                    fontWeight: FontWeight.w300)),
           ]),
     );
   }

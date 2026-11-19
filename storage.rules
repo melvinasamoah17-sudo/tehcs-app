@@ -12,6 +12,15 @@ service firebase.storage {
                    && request.resource.contentType.matches('image/.*');
     }
 
+    // Chat voice notes — same access model as chat images.
+    match /chat_audio/{userId}/{fileName} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.size < 10 * 1024 * 1024
+                   && request.resource.contentType.matches('audio/.*');
+    }
+
     // Catch-all: deny everything else by default
     match /{allPaths=**} {
       allow read, write: if false;

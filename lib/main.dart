@@ -11,6 +11,7 @@ import 'firebase_options.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
 import 'screens/auth/login_screen.dart';
+import 'services/call_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -68,6 +69,8 @@ class _TEHCSAppState extends State<TEHCSApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Ring incoming voice/video calls anywhere in the app.
+    if (widget.firebaseError == null) CallService.init(_navigatorKey);
   }
 
   @override
@@ -110,6 +113,8 @@ class _TEHCSAppState extends State<TEHCSApp> with WidgetsBindingObserver {
   Future<void> _handleTimeout() async {
     // Only sign out if someone is actually signed in
     if (FirebaseAuth.instance.currentUser == null) return;
+    // Never cut someone off mid-call.
+    if (CallService.inCall) return;
     await FirebaseAuth.instance.signOut();
     // Navigate to login, clearing the entire stack
     _navigatorKey.currentState?.pushAndRemoveUntil(

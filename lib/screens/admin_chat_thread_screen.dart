@@ -4,6 +4,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_theme.dart';
 import '../models/chat_message.dart';
+import '../services/call_service.dart';
+import '../services/voice_note_service.dart';
+import '../widgets/chat_media.dart';
 
 class AdminChatThreadScreen extends StatefulWidget {
   final String clientUid;
@@ -23,6 +26,49 @@ class AdminChatThreadScreen extends StatefulWidget {
 class _AdminChatThreadScreenState extends State<AdminChatThreadScreen> {
   final _msgCtrl = TextEditingController();
   final _scroll = ScrollController();
+  final _recorder = VoiceRecorder();
+  bool _hasText = false;
+  bool _sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _msgCtrl.addListener(() {
+      final has = _msgCtrl.text.trim().isNotEmpty;
+      if (has != _hasText) setState(() => _hasText = has);
+    });
+  }
+
+  Future<void> _sendVoice(VoiceClip clip) async {
+    setState(() => _sending = true);
+    try {
+      await VoiceNoteService.send(
+        clip: clip,
+        clientUid: widget.clientUid,
+        clientName: widget.clientName,
+        clientEmail: widget.clientEmail,
+        from: 'staff',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not send voice message.')));
+      }
+    }
+    if (mounted) setState(() => _sending = false);
+  }
+
+  // Admin only: call the customer back (rings while their app is open).
+  void _call({required bool video}) => CallService.start(
+        context,
+        video: video,
+        toAdmin: false,
+        calleeUid: widget.clientUid,
+        peerName: widget.clientName,
+        clientUid: widget.clientUid,
+        clientName: widget.clientName,
+        clientEmail: widget.clientEmail,
+      );
 
   void _send() async {
     final text = _msgCtrl.text.trim();
@@ -54,6 +100,7 @@ class _AdminChatThreadScreenState extends State<AdminChatThreadScreen> {
   void dispose() {
     _msgCtrl.dispose();
     _scroll.dispose();
+    _recorder.dispose();
     super.dispose();
   }
 
@@ -71,6 +118,20 @@ class _AdminChatThreadScreenState extends State<AdminChatThreadScreen> {
               Text(widget.clientEmail, style: GoogleFonts.nunito(fontSize: 11, color: Colors.white54)),
           ],
         ),
+        actions: [
+          if (CallService.isAdmin) ...[
+            IconButton(
+              tooltip: 'Voice call',
+              icon: const Icon(Icons.call_rounded, color: Colors.white),
+              onPressed: () => _call(video: false),
+            ),
+            IconButton(
+              tooltip: 'Video call',
+              icon: const Icon(Icons.videocam_rounded, color: Colors.white),
+              onPressed: () => _call(video: true),
+            ),
+          ],
+        ],
       ),
       body: Column(
         children: [
@@ -111,40 +172,61 @@ class _AdminChatThreadScreenState extends State<AdminChatThreadScreen> {
   Widget _buildInput() => Container(
     padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
     decoration: const BoxDecoration(color: AppTheme.white, border: Border(top: BorderSide(color: AppTheme.border))),
-    child: Row(
-      children: [
-        Expanded(
-          child: Container(
-            decoration: BoxDecoration(
-              color: AppTheme.offWhite,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: AppTheme.border),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: TextField(
-              controller: _msgCtrl,
-              style: GoogleFonts.nunito(fontSize: 14, color: AppTheme.navyDark),
-              decoration: InputDecoration(
-                hintText: 'Reply to client...',
-                hintStyle: GoogleFonts.nunito(fontSize: 14, color: AppTheme.textMute),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
+    child: ListenableBuilder(
+      listenable: _recorder,
+      builder: (_, __) => Row(
+        children: [
+          Expanded(
+            child: _recorder.recording
+                ? RecordingStrip(recorder: _recorder)
+                : Container(
+                    decoration: BoxDecoration(
+                      color: AppTheme.offWhite,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: TextField(
+                      controller: _msgCtrl,
+                      style: GoogleFonts.nunito(
+                          fontSize: 14, color: AppTheme.navyDark),
+                      decoration: InputDecoration(
+                        hintText: 'Reply to client...',
+                        hintStyle: GoogleFonts.nunito(
+                            fontSize: 14, color: AppTheme.textMute),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                      ),
+                      onSubmitted: (_) => _send(),
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 10),
+          if (_sending)
+            const SizedBox(
+                width: 44,
+                height: 44,
+                child: Padding(
+                    padding: EdgeInsets.all(11),
+                    child: CircularProgressIndicator(strokeWidth: 2)))
+          else if (_hasText)
+            GestureDetector(
+              onTap: _send,
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: const BoxDecoration(
+                    color: AppTheme.navy, shape: BoxShape.circle),
+                child: const Icon(Icons.send_rounded,
+                    color: Colors.white, size: 20),
               ),
-              onSubmitted: (_) => _send(),
-            ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        GestureDetector(
-          onTap: _send,
-          child: Container(
-            width: 44, height: 44,
-            decoration: const BoxDecoration(color: AppTheme.navy, shape: BoxShape.circle),
-            child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
-          ),
-        ),
-      ],
+            )
+          else
+            HoldToRecordButton(
+                recorder: _recorder, onRecorded: _sendVoice, size: 44),
+        ],
+      ),
     ),
   );
 }
@@ -155,6 +237,7 @@ class _StaffViewBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (msg.isCallLog) return CallLogChip(msg: msg);
     // From the staff view, flip the alignment: the client's messages sit
     // on the left, staff replies sit on the right.
     final isStaffMsg = !msg.isClient;
@@ -178,7 +261,10 @@ class _StaffViewBubble extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(msg.text, style: GoogleFonts.nunito(fontSize: 14, color: isStaffMsg ? Colors.white : AppTheme.navyDark, height: 1.45)),
+            if (msg.hasAudio)
+              VoiceNotePlayer(url: msg.audioUrl, durationMs: msg.audioMs, onDark: isStaffMsg)
+            else
+              Text(msg.text, style: GoogleFonts.nunito(fontSize: 14, color: isStaffMsg ? Colors.white : AppTheme.navyDark, height: 1.45)),
             const SizedBox(height: 4),
             Text(isStaffMsg ? 'You' : 'Client',
               style: GoogleFonts.barlowCondensed(fontSize: 9, fontWeight: FontWeight.w700, color: isStaffMsg ? Colors.white54 : AppTheme.textMute, letterSpacing: 0.5),

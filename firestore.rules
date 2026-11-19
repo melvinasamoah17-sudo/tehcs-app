@@ -77,5 +77,29 @@ service cloud.firestore {
       allow read, update: if isStaff() || (request.auth != null && resource != null && resource.data.uid == request.auth.uid);
       allow delete: if isStaff();
     }
+
+    // 7. Voice/video calls (customers call the admin; the admin can call back).
+    //    The Agora channel is the doc id; tokens come from getAgoraToken.
+    match /calls/{callId} {
+      function isAdmin() {
+        return request.auth != null &&
+          request.auth.token.email == 'twitchempireinfo@gmail.com';
+      }
+      function isParty() {
+        return request.auth != null && (
+          resource.data.callerUid == request.auth.uid ||
+          resource.data.calleeUid == request.auth.uid ||
+          (resource.data.toAdmin == true && isAdmin()));
+      }
+      allow create: if request.auth != null
+        && request.resource.data.callerUid == request.auth.uid
+        && request.resource.data.status == 'ringing'
+        && (request.resource.data.toAdmin == true || isAdmin());
+      allow read: if isParty();
+      // Only the call state may change after creation.
+      allow update: if isParty()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'answeredAt', 'endedAt']);
+    }
   }
 }

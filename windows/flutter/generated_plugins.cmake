@@ -3,14 +3,20 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
-  cloud_firestore
+  audioplayers_windows
   file_selector_windows
-  firebase_auth
   firebase_core
+  cloud_firestore
+  firebase_auth
+  firebase_storage
   geolocator_windows
+  iris_method_channel
+  agora_rtc_engine
   local_auth_windows
-  share_plus
+  permission_handler_windows
+  record_windows
   url_launcher_windows
+  share_plus
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
