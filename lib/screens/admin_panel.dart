@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
+import '../theme/dash_theme.dart';
+import '../widgets/dashboard_widgets.dart';
 import '../models/booking.dart';
 import '../services/session_control.dart';
 import 'admin_messages_screen.dart';
@@ -20,45 +22,67 @@ class AdminPanel extends StatefulWidget {
   State<AdminPanel> createState() => _AdminPanelState();
 }
 
-class _AdminPanelState extends State<AdminPanel>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  late TabController _tabs;
+class _AdminPanelState extends State<AdminPanel> with WidgetsBindingObserver {
   DateTime? _pausedAt;
+
+  /// Which page is showing (see [_pages]); visited pages stay alive.
+  int _page = 0;
+  final Set<int> _visited = {0};
 
   /// Staff only see bookings for the service they are registered to.
   String? _staffCategory;
 
+  /// How many portal screens are open (tells the theme it's a staff session).
+  static int _open = 0;
+
   static const _adminEmail = 'twitchempireinfo@gmail.com';
   bool get _isAdmin => FirebaseAuth.instance.currentUser?.email == _adminEmail;
 
-  List<Tab> get _tabList => [
-        const Tab(
-            icon: Icon(Icons.dashboard_outlined, size: 18), text: 'Overview'),
-        const Tab(
-            icon: Icon(Icons.calendar_today_outlined, size: 18),
-            text: 'Bookings'),
-        const Tab(icon: Icon(Icons.people_outline, size: 18), text: 'Users'),
-        const Tab(
-            icon: Icon(Icons.chat_bubble_outline, size: 18), text: 'Support'),
+  // Page indexes
+  static const _home = 0, _bookings = 1, _support = 2, _users = 3;
+  static const _finance = 4, _staff = 5, _categories = 6;
+
+  static const _pageTitles = {
+    _bookings: ('MANAGE', 'Bookings'),
+    _support: ('INBOX', 'Support Chats'),
+    _users: ('PEOPLE', 'Users'),
+    _finance: ('MONEY', 'Finance'),
+    _staff: ('TEAM', 'Staff'),
+    _categories: ('SERVICES', 'Categories'),
+  };
+
+  List<DashNavItem> get _navItems => [
+        const DashNavItem(Icons.home_outlined, Icons.home_rounded, 'Home'),
+        const DashNavItem(Icons.calendar_month_outlined,
+            Icons.calendar_month_rounded, 'Bookings'),
+        const DashNavItem(Icons.chat_bubble_outline_rounded,
+            Icons.chat_bubble_rounded, 'Chats'),
+        const DashNavItem(
+            Icons.people_outline_rounded, Icons.people_rounded, 'Users'),
         if (_isAdmin)
-          const Tab(
-              icon: Icon(Icons.attach_money_outlined, size: 18),
-              text: 'Finance'),
-        if (_isAdmin)
-          const Tab(icon: Icon(Icons.badge_outlined, size: 18), text: 'Staff'),
-        if (_isAdmin)
-          const Tab(
-              icon: Icon(Icons.category_outlined, size: 18),
-              text: 'Categories'),
+          const DashNavItem(
+              Icons.grid_view_outlined, Icons.grid_view_rounded, 'More'),
       ];
+
+  /// Bottom-bar slot for the current page (Finance/Staff/Categories → More).
+  int get _navIndex => _page >= _finance ? 4 : _page;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _tabs = TabController(length: _isAdmin ? 7 : 4, vsync: this);
+    _open++;
+    _syncSession();
     PushService.init(); // phone push notifications
     if (!_isAdmin) _loadStaffCategory();
+  }
+
+  /// Night mode only applies while a portal screen is open. Updated after
+  /// the frame, because the app root rebuilds when it changes.
+  static void _syncSession() {
+    WidgetsBinding.instance.addPostFrameCallback(
+        (_) => ThemeController.staffSession.value = _open > 0);
+    WidgetsBinding.instance.scheduleFrame();
   }
 
   Future<void> _loadStaffCategory() async {
@@ -68,12 +92,16 @@ class _AdminPanelState extends State<AdminPanel>
       final email = user?.email?.toLowerCase();
       if (email != null) {
         final d = await FirebaseFirestore.instance
-            .collection('staff_by_email').doc(email).get();
+            .collection('staff_by_email')
+            .doc(email)
+            .get();
         cat = (d.data()?['category'] as String?) ?? '';
       }
       if (cat.isEmpty && user != null) {
         final d = await FirebaseFirestore.instance
-            .collection('staff').doc(user.uid).get();
+            .collection('staff')
+            .doc(user.uid)
+            .get();
         cat = (d.data()?['category'] as String?) ?? '';
       }
     } catch (_) {}
@@ -86,7 +114,8 @@ class _AdminPanelState extends State<AdminPanel>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _tabs.dispose();
+    _open--;
+    _syncSession();
     super.dispose();
   }
 
@@ -104,98 +133,215 @@ class _AdminPanelState extends State<AdminPanel>
     }
   }
 
+  void _go(int page) => setState(() {
+        _page = page;
+        _visited.add(page);
+      });
+
+  void _onNav(int i) {
+    if (_isAdmin && i == 4) {
+      _showMore();
+    } else {
+      _go(i);
+    }
+  }
+
+  Future<void> _showMore() async {
+    final page = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: Dash.card,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: Dash.border,
+                    borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 16),
+            for (final (page, icon, label, color) in [
+              (
+                _finance,
+                Icons.payments_rounded,
+                'Finance',
+                const Color(0xFF5DB043)
+              ),
+              (_staff, Icons.badge_rounded, 'Staff', const Color(0xFF3D80E8)),
+              (
+                _categories,
+                Icons.category_rounded,
+                'Categories',
+                const Color(0xFF8B5CF6)
+              ),
+            ])
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                leading: Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                      color: color.withValues(alpha: .15),
+                      borderRadius: BorderRadius.circular(12)),
+                  child: Icon(icon, color: color),
+                ),
+                title: Text(label,
+                    style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w700, color: Dash.text)),
+                trailing:
+                    Icon(Icons.chevron_right_rounded, color: Dash.textMute),
+                onTap: () => Navigator.pop(ctx, page),
+              ),
+          ]),
+        ),
+      ),
+    );
+    if (page != null) _go(page);
+  }
+
+  Future<void> _signOut() async {
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
+  }
+
+  Widget _pageFor(int i) => switch (i) {
+        _home => _OverviewTab(
+            isAdmin: _isAdmin, category: _scope, onOpen: (p) => _go(p)),
+        _bookings => _BookingsTab(isAdmin: _isAdmin, category: _scope),
+        _users => _UsersTab(isAdmin: _isAdmin),
+        _support => const AdminMessagesScreen(),
+        _finance => _FinanceTab(),
+        _staff => _StaffTab(),
+        _categories => _CategoriesTab(),
+        _ => const SizedBox.shrink(),
+      };
+
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvoked: (d) {
-        if (!d) handleGuardedBackPress(context);
-      },
-      child: Scaffold(
-        backgroundColor: AppTheme.offWhite,
-        appBar: AppBar(
-          backgroundColor: AppTheme.navyDark,
-          automaticallyImplyLeading: false,
-          title: Row(children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.asset(
-                'assets/images/tehcs.jpg',
-                width: 30,
-                height: 30,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                    width: 30,
-                    height: 30,
-                    decoration: BoxDecoration(
-                        color: AppTheme.gold,
-                        borderRadius: BorderRadius.circular(8)),
-                    child: Center(
-                        child: Text('T',
-                            style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w900,
-                                color: AppTheme.navyDark)))),
+    return ListenableBuilder(
+      listenable: ThemeController.changes,
+      builder: (context, _) => PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) return;
+          if (_page != _home) {
+            _go(_home);
+          } else {
+            handleGuardedBackPress(context);
+          }
+        },
+        child: Scaffold(
+          backgroundColor: Dash.bg,
+          // Rebuild everything with the new colours when day/night changes.
+          body: KeyedSubtree(
+            key: ValueKey(ThemeController.isDark),
+            child: Column(children: [
+              _header(),
+              Expanded(
+                child: IndexedStack(
+                  index: _page,
+                  children: [
+                    for (var i = 0; i <= _categories; i++)
+                      _visited.contains(i) && (_isAdmin || i < _finance)
+                          ? _pageFor(i)
+                          : const SizedBox.shrink(),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Text(_isAdmin ? 'ADMIN PORTAL' : 'STAFF VIEW',
-                style: GoogleFonts.poppins(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                    letterSpacing: 1.2)),
-            const Spacer(),
-            Icon(Icons.circle,
-                size: 8, color: _isAdmin ? AppTheme.red : AppTheme.gold),
-            const SizedBox(width: 4),
-            Text(_isAdmin ? 'Admin' : 'Staff',
-                style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white54,
-                    letterSpacing: 0.5)),
-          ]),
-          actions: [
-            if (_isAdmin) const AdminNotificationBell(),
-            IconButton(
-              icon: const Icon(Icons.logout_rounded,
-                  color: Colors.white70, size: 20),
-              onPressed: () async {
-                await FirebaseAuth.instance.signOut();
-                if (!mounted) return;
-                Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    (_) => false);
-              },
-            ),
-          ],
-          bottom: TabBar(
-            controller: _tabs,
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            indicatorColor: AppTheme.gold,
-            labelColor: AppTheme.gold,
-            unselectedLabelColor: Colors.white38,
-            labelStyle: GoogleFonts.poppins(
-                fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.6),
-            unselectedLabelStyle:
-                GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600),
-            tabs: _tabList,
+            ]),
+          ),
+          bottomNavigationBar: DashBottomNav(
+            items: _navItems,
+            index: _navIndex,
+            onTap: _onNav,
           ),
         ),
-        body: TabBarView(
-          controller: _tabs,
-          children: [
-            _OverviewTab(isAdmin: _isAdmin, category: _scope),
-            _BookingsTab(isAdmin: _isAdmin, category: _scope),
-            _UsersTab(isAdmin: _isAdmin),
-            const AdminMessagesScreen(),
-            if (_isAdmin) _FinanceTab(),
-            if (_isAdmin) _StaffTab(),
-            if (_isAdmin) _CategoriesTab(),
-          ],
-        ),
+      ),
+    );
+  }
+
+  Widget _header() {
+    final user = FirebaseAuth.instance.currentUser;
+    final name = (user?.displayName?.trim().isNotEmpty ?? false)
+        ? user!.displayName!.trim()
+        : _isAdmin
+            ? 'TEHCS Admin'
+            : (user?.email?.split('@').first ?? 'Staff');
+    final title = _pageTitles[_page];
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 12, 8),
+        child: Row(children: [
+          Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                  title?.$1 ??
+                      (_isAdmin
+                          ? 'WELCOME BACK · ADMIN'
+                          : 'WELCOME BACK · STAFF'),
+                  style: GoogleFonts.poppins(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.1,
+                      color: Dash.textMute)),
+              Text(title?.$2 ?? name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      color: Dash.text)),
+            ]),
+          ),
+          const ThemeToggleButton(),
+          if (_isAdmin) const AdminNotificationBell(),
+          PopupMenuButton<String>(
+            tooltip: 'Account',
+            color: Dash.card,
+            offset: const Offset(0, 50),
+            onSelected: (v) {
+              if (v == 'logout') _signOut();
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                enabled: false,
+                child: Text(user?.email ?? '',
+                    style:
+                        GoogleFonts.inter(fontSize: 12, color: Dash.textMute)),
+              ),
+              PopupMenuItem(
+                value: 'logout',
+                child: Row(children: [
+                  const Icon(Icons.logout_rounded,
+                      color: AppTheme.red, size: 20),
+                  const SizedBox(width: 10),
+                  Text('Sign out',
+                      style: GoogleFonts.inter(
+                          color: AppTheme.red, fontWeight: FontWeight.w600)),
+                ]),
+              ),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: CircleAvatar(
+                radius: 22,
+                backgroundColor: AppTheme.gold,
+                child: Text(name.isNotEmpty ? name[0].toUpperCase() : 'T',
+                    style: GoogleFonts.poppins(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.navyDark)),
+              ),
+            ),
+          ),
+        ]),
       ),
     );
   }
@@ -204,99 +350,95 @@ class _AdminPanelState extends State<AdminPanel>
 // ══════════════════════════════════════════
 // 1. OVERVIEW TAB
 // ══════════════════════════════════════════
-class _OverviewTab extends StatelessWidget {
+class _OverviewTab extends StatefulWidget {
   final bool isAdmin;
   final String? category; // null = all services (admin)
-  const _OverviewTab({required this.isAdmin, this.category});
+  final ValueChanged<int> onOpen; // jump to another page
+  const _OverviewTab(
+      {required this.isAdmin, this.category, required this.onOpen});
+
+  @override
+  State<_OverviewTab> createState() => _OverviewTabState();
+}
+
+class _OverviewTabState extends State<_OverviewTab> {
+  int _days = 7;
+
+  late final _bookingsStream =
+      FirebaseFirestore.instance.collection('bookings').snapshots();
+  late final _clientsStream = widget.isAdmin
+      ? FirebaseFirestore.instance.collection('clients').snapshots()
+      : const Stream<QuerySnapshot<Map<String, dynamic>>>.empty();
+
+  static DateTime _created(Map d) =>
+      (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+
+  String get _periodLabel => switch (_days) {
+        7 => 'last week',
+        30 => 'last month',
+        _ => 'previous 90 days',
+      };
+
+  /// (number of bars, days per bar) for the chosen period.
+  (int, int) get _buckets => switch (_days) {
+        7 => (7, 1),
+        30 => (10, 3),
+        _ => (13, 7),
+      };
 
   @override
   Widget build(BuildContext context) {
+    final category = widget.category;
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        if (!isAdmin) ...[
+        if (!widget.isAdmin) ...[
           _ServiceBanner(category: category),
           const SizedBox(height: 14),
         ],
-        // Live stats
-        StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance.collection('bookings').snapshots(),
-          builder: (_, bSnap) => StreamBuilder<QuerySnapshot>(
-            stream:
-                FirebaseFirestore.instance.collection('clients').snapshots(),
-            builder: (_, cSnap) => StreamBuilder<QuerySnapshot>(
-              stream:
-                  FirebaseFirestore.instance.collection('staff').snapshots(),
-              builder: (_, sSnap) {
-                final bookings = (bSnap.data?.docs ?? [])
-                    .where((d) => _inScope(d.data() as Map, category))
-                    .toList();
-                final clients = cSnap.data?.docs.length ?? 0;
-                final staff = sSnap.data?.docs.length ?? 0;
-                final pending = bookings
-                    .where((d) => (d.data() as Map)['status'] == 'pending')
-                    .length;
-                final active = bookings
-                    .where((d) => (d.data() as Map)['status'] == 'active')
-                    .length;
-                final complete = bookings
-                    .where((d) => (d.data() as Map)['status'] == 'complete')
-                    .length;
-                return Column(children: [
-                  Row(children: [
-                    _StatCard(
-                        value: '${bookings.length}',
-                        label: isAdmin ? 'Total Bookings' : 'My Service Bookings',
-                        icon: Icons.calendar_today_outlined,
-                        color: AppTheme.navy),
-                    if (isAdmin) ...[
-                      const SizedBox(width: 10),
-                      _StatCard(
-                          value: '$clients',
-                          label: 'Customers',
-                          icon: Icons.people_outline,
-                          color: AppTheme.goldDark),
-                    ],
-                  ]),
-                  const SizedBox(height: 10),
-                  Row(children: [
-                    if (isAdmin) ...[
-                      _StatCard(
-                          value: '$staff',
-                          label: 'Staff Members',
-                          icon: Icons.badge_outlined,
-                          color: const Color(0xFF6B21A8)),
-                      const SizedBox(width: 10),
-                    ],
-                    _StatCard(
-                        value: '$active',
-                        label: 'Active Jobs',
-                        icon: Icons.work_outline,
-                        color: AppTheme.green),
-                  ]),
-                  const SizedBox(height: 10),
-                  Row(children: [
-                    _StatCard(
-                        value: '$pending',
-                        label: 'Pending',
-                        icon: Icons.pending_outlined,
-                        color: AppTheme.goldDark),
-                    const SizedBox(width: 10),
-                    _StatCard(
-                        value: '$complete',
-                        label: 'Completed',
-                        icon: Icons.check_circle_outline,
-                        color: AppTheme.navy),
-                  ]),
-                ]);
-              },
-            ),
+        PeriodSelector(
+            days: _days, onChanged: (d) => setState(() => _days = d)),
+        const SizedBox(height: 16),
+
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: _bookingsStream,
+          builder: (_, bSnap) =>
+              StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: _clientsStream,
+            builder: (_, cSnap) {
+              if (bSnap.connectionState == ConnectionState.waiting &&
+                  !bSnap.hasData) {
+                return const Padding(
+                  padding: EdgeInsets.all(40),
+                  child: Center(
+                      child: CircularProgressIndicator(
+                          color: AppTheme.gold, strokeWidth: 2)),
+                );
+              }
+              final bookings = (bSnap.data?.docs ?? [])
+                  .map((d) => d.data())
+                  .where((d) => _inScope(d, category))
+                  .toList();
+              final clients =
+                  (cSnap.data?.docs ?? []).map((d) => d.data()).toList();
+              return _stats(bookings, clients);
+            },
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 22),
 
         // Recent bookings
-        _sectionHeader('RECENT BOOKINGS'),
+        DashTitle(
+          kicker: 'Latest',
+          title: 'Recent bookings',
+          trailing: TextButton(
+            onPressed: () => widget.onOpen(1),
+            child: Text('View all',
+                style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF3D80E8))),
+          ),
+        ),
         const SizedBox(height: 10),
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
@@ -313,14 +455,15 @@ class _OverviewTab extends StatelessWidget {
             return Column(
                 children: docs.map((d) {
               final b = Booking.fromFirestore(d);
-              return _BookingRow(booking: b, docId: d.id, isAdmin: isAdmin);
+              return _BookingRow(
+                  booking: b, docId: d.id, isAdmin: widget.isAdmin);
             }).toList());
           },
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 22),
 
         // Staff on duty
-        _sectionHeader('STAFF ON DUTY'),
+        const DashTitle(kicker: 'Right now', title: 'Staff on duty'),
         const SizedBox(height: 10),
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
@@ -331,8 +474,9 @@ class _OverviewTab extends StatelessWidget {
             final docs = (snap.data?.docs ?? [])
                 .where((d) => _inScope(d.data() as Map, category))
                 .toList();
-            if (docs.isEmpty)
+            if (docs.isEmpty) {
               return _emptyState('No staff currently clocked in');
+            }
             return Column(
                 children: docs.map((d) {
               final data = d.data() as Map<String, dynamic>;
@@ -340,10 +484,10 @@ class _OverviewTab extends StatelessWidget {
             }).toList());
           },
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 22),
 
         // Quote requests
-        _sectionHeader('QUOTE REQUESTS'),
+        const DashTitle(kicker: 'Waiting', title: 'Quote requests'),
         const SizedBox(height: 10),
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
@@ -367,6 +511,305 @@ class _OverviewTab extends StatelessWidget {
       ]),
     );
   }
+
+  Widget _stats(
+      List<Map<String, dynamic>> bookings, List<Map<String, dynamic>> clients) {
+    final now = DateTime.now();
+    final start = now.subtract(Duration(days: _days));
+    final prevStart = start.subtract(Duration(days: _days));
+    bool inCur(Map d) => _created(d).isAfter(start);
+    bool inPrev(Map d) {
+      final c = _created(d);
+      return c.isAfter(prevStart) && !c.isAfter(start);
+    }
+
+    int total(String s) => bookings.where((d) => d['status'] == s).length;
+    int delta(String s) =>
+        bookings.where((d) => d['status'] == s && inCur(d)).length -
+        bookings.where((d) => d['status'] == s && inPrev(d)).length;
+
+    // Time buckets for charts
+    final (n, per) = _buckets;
+    final bucketStart = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: n * per - 1));
+    List<double> series(List<Map<String, dynamic>> docs,
+        [double Function(Map d)? weight]) {
+      final out = List<double>.filled(n, 0);
+      for (final d in docs) {
+        final i = _created(d).difference(bucketStart).inDays ~/ per;
+        if (i >= 0 && i < n) out[i] += weight?.call(d) ?? 1;
+      }
+      return out;
+    }
+
+    final labels = [
+      for (var i = 0; i < n; i++)
+        per == 1
+            ? DateFormat('E').format(bucketStart.add(Duration(days: i)))
+            : DateFormat('d/M')
+                .format(bucketStart.add(Duration(days: i * per))),
+    ];
+
+    final curBookings = bookings.where(inCur).toList();
+    final prevBookings = bookings.where(inPrev).length;
+    double hoursOf(Map d) => ((d['hours'] as num?) ?? 0).toDouble();
+    final curHours = curBookings.fold<double>(0, (a, d) => a + hoursOf(d));
+    final prevHours =
+        bookings.where(inPrev).fold<double>(0, (a, d) => a + hoursOf(d));
+    final curClients = clients.where(inCur).length;
+    final prevClients = clients.where(inPrev).length;
+
+    String fmtHours(double h) =>
+        h % 1 == 0 ? '${h.toInt()}h' : '${h.toStringAsFixed(1)}h';
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // ── Coloured status tiles ──
+      Row(children: [
+        Expanded(
+          child: GradientStatTile(
+            title: 'Active Jobs',
+            value: total('active'),
+            delta: delta('active'),
+            periodLabel: _periodLabel,
+            colors: GradientStatTile.green,
+            icon: Icons.work_rounded,
+            onTap: () => widget.onOpen(1),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: GradientStatTile(
+            title: 'Cancelled',
+            value: total('cancelled'),
+            delta: delta('cancelled'),
+            periodLabel: _periodLabel,
+            colors: GradientStatTile.red,
+            icon: Icons.cancel_rounded,
+            onTap: () => widget.onOpen(1),
+          ),
+        ),
+      ]),
+      const SizedBox(height: 12),
+      Row(children: [
+        Expanded(
+          child: GradientStatTile(
+            title: 'Pending',
+            value: total('pending'),
+            delta: delta('pending'),
+            periodLabel: _periodLabel,
+            colors: GradientStatTile.yellow,
+            icon: Icons.hourglass_top_rounded,
+            onTap: () => widget.onOpen(1),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: GradientStatTile(
+            title: 'Completed',
+            value: total('complete'),
+            delta: delta('complete'),
+            periodLabel: _periodLabel,
+            colors: GradientStatTile.blue,
+            icon: Icons.task_alt_rounded,
+            onTap: () => widget.onOpen(1),
+          ),
+        ),
+      ]),
+      const SizedBox(height: 14),
+
+      // ── Sparkline cards ──
+      Row(children: [
+        Expanded(
+          child: SparkCard(
+            value: '${curBookings.length}',
+            label: 'New bookings',
+            points: series(bookings),
+            color: const Color(0xFF5DB043),
+            trend: curBookings.length - prevBookings,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: widget.isAdmin
+              ? SparkCard(
+                  value: '$curClients',
+                  label: 'New customers',
+                  points: series(clients),
+                  color: const Color(0xFF3D80E8),
+                  trend: curClients - prevClients,
+                )
+              : SparkCard(
+                  value: fmtHours(curHours),
+                  label: 'Hours booked',
+                  points: series(bookings, hoursOf),
+                  color: const Color(0xFF3D80E8),
+                  trend: (curHours - prevHours).sign.toInt(),
+                ),
+        ),
+      ]),
+      if (widget.isAdmin) ...[
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(
+            child: SparkCard(
+              value: fmtHours(curHours),
+              label: 'Hours booked',
+              points: series(bookings, hoursOf),
+              color: const Color(0xFFF5B533),
+              trend: (curHours - prevHours).sign.toInt(),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: SparkCard(
+              value:
+                  '${bookings.where((d) => d['status'] == 'complete' && inCur(d)).length}',
+              label: 'Jobs completed',
+              points: series(
+                  bookings.where((d) => d['status'] == 'complete').toList()),
+              color: const Color(0xFF8B5CF6),
+              trend: delta('complete'),
+            ),
+          ),
+        ]),
+      ],
+      const SizedBox(height: 14),
+
+      // ── Bar chart ──
+      DashCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          DashTitle(
+            kicker: 'Activity',
+            title: per == 1 ? 'Bookings per day' : 'Bookings over time',
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                  color: Dash.field, borderRadius: BorderRadius.circular(10)),
+              child: Text('${curBookings.length} total',
+                  style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Dash.textMid)),
+            ),
+          ),
+          const SizedBox(height: 12),
+          BarChart(values: series(bookings), labels: labels),
+        ]),
+      ),
+      const SizedBox(height: 14),
+
+      // ── Breakdown with progress bars ──
+      DashCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          DashTitle(
+            kicker: widget.isAdmin ? 'Services' : 'Your jobs',
+            title: widget.isAdmin ? 'Bookings by service' : 'Job progress',
+            trailing: TextButton(
+              onPressed: () => widget.onOpen(1),
+              child: Text('View all',
+                  style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF3D80E8))),
+            ),
+          ),
+          const SizedBox(height: 6),
+          ..._breakdown(curBookings),
+        ]),
+      ),
+    ]);
+  }
+
+  List<Widget> _breakdown(List<Map<String, dynamic>> cur) {
+    if (cur.isEmpty) {
+      return [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Text('No bookings in this period.',
+              style: GoogleFonts.inter(fontSize: 13, color: Dash.textMute)),
+        ),
+      ];
+    }
+    if (!widget.isAdmin) {
+      final total = cur.length;
+      int c(String s) => cur.where((d) => d['status'] == s).length;
+      return [
+        for (final (s, label, icon, color) in [
+          (
+            'active',
+            'In progress',
+            Icons.play_circle_fill_rounded,
+            const Color(0xFF5DB043)
+          ),
+          (
+            'pending',
+            'Waiting to start',
+            Icons.hourglass_top_rounded,
+            const Color(0xFFF5B533)
+          ),
+          (
+            'complete',
+            'Completed',
+            Icons.task_alt_rounded,
+            const Color(0xFF3D80E8)
+          ),
+          ('cancelled', 'Cancelled', Icons.cancel_rounded, AppTheme.red),
+        ])
+          ProgressRow(
+            icon: icon,
+            color: color,
+            title: label,
+            subtitle: '${(c(s) * 100 / total).round()}% of your jobs',
+            trailing: '${c(s)}/$total',
+            progress: c(s) / total,
+          ),
+      ];
+    }
+    final byCat = <String, List<Map<String, dynamic>>>{};
+    for (final d in cur) {
+      final cat = (d['category'] ?? '').toString();
+      byCat.putIfAbsent(cat.isEmpty ? 'Other' : cat, () => []).add(d);
+    }
+    final rows = byCat.entries.toList()
+      ..sort((a, b) => b.value.length.compareTo(a.value.length));
+    return [
+      for (final e in rows.take(5))
+        Builder(builder: (_) {
+          final (icon, color) = _serviceStyle(e.key);
+          final done = e.value.where((d) => d['status'] == 'complete').length;
+          return ProgressRow(
+            icon: icon,
+            color: color,
+            title: _titleCase(e.key),
+            subtitle: '$done completed',
+            trailing:
+                '${e.value.length} booking${e.value.length == 1 ? '' : 's'}',
+            progress: e.value.length / cur.length,
+          );
+        }),
+    ];
+  }
+
+  static (IconData, Color) _serviceStyle(String cat) {
+    final c = cat.toLowerCase();
+    if (c.contains('clean')) {
+      return (Icons.cleaning_services_rounded, const Color(0xFF3D80E8));
+    }
+    if (c.contains('construct') || c.contains('build')) {
+      return (Icons.construction_rounded, const Color(0xFFF5B533));
+    }
+    if (c.contains('care') || c.contains('health') || c.contains('nurs')) {
+      return (Icons.volunteer_activism_rounded, const Color(0xFFE2394A));
+    }
+    if (c.contains('garden'))
+      return (Icons.yard_rounded, const Color(0xFF5DB043));
+    return (Icons.home_repair_service_rounded, const Color(0xFF8B5CF6));
+  }
+
+  static String _titleCase(String s) => s
+      .split(RegExp(r'[_\s]+'))
+      .where((w) => w.isNotEmpty)
+      .map((w) => w[0].toUpperCase() + w.substring(1))
+      .join(' ');
 }
 
 // ══════════════════════════════════════════
@@ -411,7 +854,7 @@ class _BookingsTabState extends State<_BookingsTab> {
     }
     final choice = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: AppTheme.white,
+      backgroundColor: Dash.card,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => SafeArea(
@@ -420,10 +863,12 @@ class _BookingsTabState extends State<_BookingsTab> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Text('Export bookings to Excel',
                 style: GoogleFonts.poppins(
-                    fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.navy)),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: Dash.accent)),
             const SizedBox(height: 8),
             ListTile(
-              leading: const Icon(Icons.table_view_outlined, color: AppTheme.navy),
+              leading: Icon(Icons.table_view_outlined, color: Dash.accent),
               title: const Text('All services'),
               subtitle: Text('${all.length} bookings · one sheet per service'),
               onTap: () => Navigator.pop(ctx, '*'),
@@ -431,7 +876,7 @@ class _BookingsTabState extends State<_BookingsTab> {
             const Divider(height: 1),
             for (final e in counts.entries)
               ListTile(
-                leading: const Icon(Icons.description_outlined, color: AppTheme.textMid),
+                leading: Icon(Icons.description_outlined, color: Dash.textMid),
                 title: Text(e.key),
                 subtitle: Text('${e.value} bookings'),
                 onTap: () => Navigator.pop(ctx, e.key),
@@ -443,7 +888,9 @@ class _BookingsTabState extends State<_BookingsTab> {
     if (choice == null || !mounted) return;
     final docs = choice == '*'
         ? all
-        : all.where((d) => BookingExport.categoryOf(d.data()) == choice).toList();
+        : all
+            .where((d) => BookingExport.categoryOf(d.data()) == choice)
+            .toList();
     final title = choice == '*' ? 'All services' : choice;
     try {
       await BookingExport.exportAndShare(docs, title: title);
@@ -467,7 +914,8 @@ class _BookingsTabState extends State<_BookingsTab> {
               child: const Text('Keep them')),
           TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Delete', style: TextStyle(color: AppTheme.red))),
+              child:
+                  const Text('Delete', style: TextStyle(color: AppTheme.red))),
         ],
       ),
     );
@@ -499,48 +947,47 @@ class _BookingsTabState extends State<_BookingsTab> {
         ),
       // Filter chips
       Container(
-        color: AppTheme.white,
+        color: Dash.card,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(children: [
           Expanded(
             child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-              children: _filters
-                  .map((f) => GestureDetector(
-                        onTap: () => setState(() => _filter = f),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
-                          margin: const EdgeInsets.only(right: 8),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 7),
-                          decoration: BoxDecoration(
-                            color: _filter == f
-                                ? AppTheme.navy
-                                : AppTheme.offWhite,
-                            borderRadius: BorderRadius.circular(100),
-                            border: Border.all(
-                                color: _filter == f
-                                    ? AppTheme.navy
-                                    : AppTheme.border),
-                          ),
-                          child: Text(f[0].toUpperCase() + f.substring(1),
-                              style: GoogleFonts.poppins(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                  color: _filter == f
-                                      ? Colors.white
-                                      : AppTheme.textMid,
-                                  letterSpacing: 0.5)),
-                        ),
-                      ))
-                  .toList()),
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                  children: _filters
+                      .map((f) => GestureDetector(
+                            onTap: () => setState(() => _filter = f),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              margin: const EdgeInsets.only(right: 8),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 7),
+                              decoration: BoxDecoration(
+                                color:
+                                    _filter == f ? AppTheme.navy : Dash.field,
+                                borderRadius: BorderRadius.circular(100),
+                                border: Border.all(
+                                    color: _filter == f
+                                        ? Dash.accent
+                                        : Dash.border),
+                              ),
+                              child: Text(f[0].toUpperCase() + f.substring(1),
+                                  style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                      color: _filter == f
+                                          ? Colors.white
+                                          : Dash.textMid,
+                                      letterSpacing: 0.5)),
+                            ),
+                          ))
+                      .toList()),
             ),
           ),
           if (widget.isAdmin)
             IconButton(
               tooltip: 'Export to Excel',
-              icon: const Icon(Icons.file_download_outlined, color: AppTheme.navy),
+              icon: Icon(Icons.file_download_outlined, color: Dash.accent),
               onPressed: _export,
             ),
         ]),
@@ -550,9 +997,9 @@ class _BookingsTabState extends State<_BookingsTab> {
         stream: _stream,
         builder: (_, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(
+            return Center(
                 child: CircularProgressIndicator(
-                    color: AppTheme.navy, strokeWidth: 2));
+                    color: Dash.accent, strokeWidth: 2));
           }
           final docs = (snap.data?.docs ?? [])
               .where((d) => _inScope(d.data() as Map, widget.category))
@@ -648,9 +1095,9 @@ class _UserList extends StatelessWidget {
           .snapshots(),
       builder: (_, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(
+          return Center(
               child: CircularProgressIndicator(
-                  color: AppTheme.navy, strokeWidth: 2));
+                  color: Dash.accent, strokeWidth: 2));
         }
         final docs = snap.data?.docs ?? [];
         if (docs.isEmpty) return _emptyState(emptyLabel);
@@ -664,9 +1111,9 @@ class _UserList extends StatelessWidget {
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                  color: AppTheme.white,
+                  color: Dash.card,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppTheme.border),
+                  border: Border.all(color: Dash.border),
                   boxShadow: [
                     BoxShadow(
                         color: Colors.black.withOpacity(.03), blurRadius: 6)
@@ -693,12 +1140,12 @@ class _UserList extends StatelessWidget {
                                 style: GoogleFonts.poppins(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w900,
-                                    color: AppTheme.navy,
+                                    color: Dash.accent,
                                     letterSpacing: 0.3)),
                             Text(d['email'] ?? '',
                                 style: GoogleFonts.inter(
                                     fontSize: 12,
-                                    color: AppTheme.textMute,
+                                    color: Dash.textMute,
                                     fontWeight: FontWeight.w300)),
                           ])),
                       if (collection == 'staff') ...[
@@ -713,26 +1160,26 @@ class _UserList extends StatelessWidget {
                       const SizedBox(height: 10),
                       Row(children: [
                         if ((d['phone'] ?? '').isNotEmpty) ...[
-                          const Icon(Icons.phone_outlined,
-                              size: 13, color: AppTheme.textMute),
+                          Icon(Icons.phone_outlined,
+                              size: 13, color: Dash.textMute),
                           const SizedBox(width: 4),
                           Text(d['phone'],
                               style: GoogleFonts.inter(
-                                  fontSize: 12, color: AppTheme.textMid)),
+                                  fontSize: 12, color: Dash.textMid)),
                           const SizedBox(width: 16),
                         ],
                         if ((d['staffRole'] ?? '').isNotEmpty) ...[
-                          const Icon(Icons.work_outline,
-                              size: 13, color: AppTheme.textMute),
+                          Icon(Icons.work_outline,
+                              size: 13, color: Dash.textMute),
                           const SizedBox(width: 4),
                           Text(d['staffRole'],
                               style: GoogleFonts.inter(
-                                  fontSize: 12, color: AppTheme.textMid)),
+                                  fontSize: 12, color: Dash.textMid)),
                         ],
                         if ((d['category'] ?? '').isNotEmpty) ...[
                           const SizedBox(width: 16),
-                          const Icon(Icons.category_outlined,
-                              size: 13, color: AppTheme.textMute),
+                          Icon(Icons.category_outlined,
+                              size: 13, color: Dash.textMute),
                           const SizedBox(width: 4),
                           Text(d['category'],
                               style: GoogleFonts.inter(
@@ -757,7 +1204,7 @@ class _UserList extends StatelessWidget {
                         const SizedBox(width: 8),
                         _ActionBtn(
                             label: 'Assign Job',
-                            color: AppTheme.navy,
+                            color: Dash.accent,
                             onTap: () {}),
                       ]),
                     ],
@@ -813,7 +1260,7 @@ class _FinanceTab extends StatelessWidget {
                   value: '$paid',
                   label: 'Paid Jobs',
                   icon: Icons.payments_outlined,
-                  color: AppTheme.navy),
+                  color: Dash.accent),
               const SizedBox(width: 10),
               _StatCard(
                   value: '—',
@@ -843,21 +1290,21 @@ class _FinanceTab extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
-                    color: AppTheme.white,
+                    color: Dash.card,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.border)),
+                    border: Border.all(color: Dash.border)),
                 child: Row(children: [
                   Text(label,
                       style: GoogleFonts.inter(
                           fontSize: 13,
-                          color: AppTheme.navyDark,
+                          color: Dash.text,
                           fontWeight: FontWeight.w500)),
                   const Spacer(),
                   Text('$count job${count != 1 ? 's' : ''}',
                       style: GoogleFonts.poppins(
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
-                          color: AppTheme.navy)),
+                          color: Dash.accent)),
                 ]),
               );
             }),
@@ -872,9 +1319,9 @@ class _FinanceTab extends StatelessWidget {
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                    color: AppTheme.white,
+                    color: Dash.card,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.border)),
+                    border: Border.all(color: Dash.border)),
                 child: Row(children: [
                   Text(data['icon'] ?? '📋',
                       style: const TextStyle(fontSize: 22)),
@@ -887,12 +1334,12 @@ class _FinanceTab extends StatelessWidget {
                             style: GoogleFonts.poppins(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w800,
-                                color: AppTheme.navy,
+                                color: Dash.accent,
                                 letterSpacing: 0.3)),
                         Text(data['clientName'] ?? '',
                             style: GoogleFonts.inter(
                                 fontSize: 11,
-                                color: AppTheme.textMute,
+                                color: Dash.textMute,
                                 fontWeight: FontWeight.w300)),
                       ])),
                   Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -901,7 +1348,7 @@ class _FinanceTab extends StatelessWidget {
                       Text(DateFormat('d MMM').format(ts),
                           style: GoogleFonts.inter(
                               fontSize: 10,
-                              color: AppTheme.textMute,
+                              color: Dash.textMute,
                               fontWeight: FontWeight.w300)),
                   ]),
                 ]),
@@ -951,9 +1398,9 @@ class _StaffTab extends StatelessWidget {
             .snapshots(),
         builder: (_, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(
+            return Center(
                 child: CircularProgressIndicator(
-                    color: AppTheme.navy, strokeWidth: 2));
+                    color: Dash.accent, strokeWidth: 2));
           }
           final docs = snap.data?.docs ?? [];
           if (docs.isEmpty)
@@ -968,9 +1415,9 @@ class _StaffTab extends StatelessWidget {
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                    color: AppTheme.white,
+                    color: Dash.card,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppTheme.border),
+                    border: Border.all(color: Dash.border),
                     boxShadow: [
                       BoxShadow(
                           color: Colors.black.withOpacity(.03), blurRadius: 6)
@@ -993,12 +1440,12 @@ class _StaffTab extends StatelessWidget {
                             style: GoogleFonts.poppins(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w900,
-                                color: AppTheme.navy,
+                                color: Dash.accent,
                                 letterSpacing: 0.3)),
                         Text(d['email'] ?? '',
                             style: GoogleFonts.inter(
                                 fontSize: 12,
-                                color: AppTheme.textMute,
+                                color: Dash.textMute,
                                 fontWeight: FontWeight.w300)),
                         if ((d['staffRole'] ?? '').isNotEmpty)
                           Text(d['staffRole'],
@@ -1018,13 +1465,13 @@ class _StaffTab extends StatelessWidget {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                                color: AppTheme.light,
+                                color: Dash.field,
                                 borderRadius: BorderRadius.circular(6)),
                             child: Text('DBS',
                                 style: GoogleFonts.poppins(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w800,
-                                    color: AppTheme.navy))),
+                                    color: Dash.accent))),
                       ),
                       const SizedBox(width: 6),
                       GestureDetector(
@@ -1095,7 +1542,13 @@ class _StaffTab extends StatelessWidget {
       'Builder',
       'Other'
     ];
-    final categories = ['Cleaning', 'Home Care', 'Medical', 'Non-Medical', 'Construction'];
+    final categories = [
+      'Cleaning',
+      'Home Care',
+      'Medical',
+      'Non-Medical',
+      'Construction'
+    ];
 
     showModalBottomSheet(
       context: context,
@@ -1108,8 +1561,8 @@ class _StaffTab extends StatelessWidget {
           // Read inset from the sheet's own context so it updates as keyboard appears
           final keyboardHeight = MediaQuery.of(ctx).viewInsets.bottom;
           return Container(
-            decoration: const BoxDecoration(
-              color: AppTheme.white,
+            decoration: BoxDecoration(
+              color: Dash.card,
               borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
             ),
             padding: EdgeInsets.fromLTRB(22, 22, 22, 22 + keyboardHeight),
@@ -1124,14 +1577,14 @@ class _StaffTab extends StatelessWidget {
                             width: 36,
                             height: 4,
                             decoration: BoxDecoration(
-                                color: AppTheme.border,
+                                color: Dash.border,
                                 borderRadius: BorderRadius.circular(2)))),
                     const SizedBox(height: 18),
                     Text('ADD STAFF MEMBER',
                         style: GoogleFonts.poppins(
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
-                            color: AppTheme.navy,
+                            color: Dash.accent,
                             letterSpacing: 1)),
                     const SizedBox(height: 16),
                     _inputField('Full Name', nameCtrl, Icons.person_outline),
@@ -1144,23 +1597,23 @@ class _StaffTab extends StatelessWidget {
                         style: GoogleFonts.poppins(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: AppTheme.textMute,
+                            color: Dash.textMute,
                             letterSpacing: 1.2)),
                     const SizedBox(height: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 4),
                       decoration: BoxDecoration(
-                          color: AppTheme.offWhite,
+                          color: Dash.field,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppTheme.border)),
+                          border: Border.all(color: Dash.border)),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
                           value: role,
                           isExpanded: true,
-                          dropdownColor: AppTheme.white,
-                          style: GoogleFonts.inter(
-                              fontSize: 14, color: AppTheme.navyDark),
+                          dropdownColor: Dash.card,
+                          style:
+                              GoogleFonts.inter(fontSize: 14, color: Dash.text),
                           items: roles
                               .map((r) =>
                                   DropdownMenuItem(value: r, child: Text(r)))
@@ -1174,23 +1627,23 @@ class _StaffTab extends StatelessWidget {
                         style: GoogleFonts.poppins(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: AppTheme.textMute,
+                            color: Dash.textMute,
                             letterSpacing: 1.2)),
                     const SizedBox(height: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 4),
                       decoration: BoxDecoration(
-                          color: AppTheme.offWhite,
+                          color: Dash.field,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppTheme.border)),
+                          border: Border.all(color: Dash.border)),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
                           value: category,
                           isExpanded: true,
-                          dropdownColor: AppTheme.white,
-                          style: GoogleFonts.inter(
-                              fontSize: 14, color: AppTheme.navyDark),
+                          dropdownColor: Dash.card,
+                          style:
+                              GoogleFonts.inter(fontSize: 14, color: Dash.text),
                           items: categories
                               .map((c) =>
                                   DropdownMenuItem(value: c, child: Text(c)))
@@ -1204,7 +1657,7 @@ class _StaffTab extends StatelessWidget {
                         'Staff only receive bookings that match this category.',
                         style: GoogleFonts.inter(
                             fontSize: 11,
-                            color: AppTheme.textMute,
+                            color: Dash.textMute,
                             fontWeight: FontWeight.w300)),
                     const SizedBox(height: 18),
                     SizedBox(
@@ -1309,9 +1762,9 @@ class _CategoriesTab extends StatelessWidget {
             .snapshots(),
         builder: (_, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(
+            return Center(
                 child: CircularProgressIndicator(
-                    color: AppTheme.navy, strokeWidth: 2));
+                    color: Dash.accent, strokeWidth: 2));
           }
           final docs = snap.data?.docs ?? [];
           if (docs.isEmpty) {
@@ -1327,9 +1780,9 @@ class _CategoriesTab extends StatelessWidget {
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                    color: AppTheme.white,
+                    color: Dash.card,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppTheme.border)),
+                    border: Border.all(color: Dash.border)),
                 child: Row(children: [
                   Text(d['icon'] ?? '📋', style: const TextStyle(fontSize: 28)),
                   const SizedBox(width: 12),
@@ -1341,7 +1794,7 @@ class _CategoriesTab extends StatelessWidget {
                             style: GoogleFonts.poppins(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w900,
-                                color: AppTheme.navy,
+                                color: Dash.accent,
                                 letterSpacing: 0.3)),
                         Text(d['division'] ?? '',
                             style: GoogleFonts.inter(
@@ -1352,7 +1805,7 @@ class _CategoriesTab extends StatelessWidget {
                           Text(d['desc'],
                               style: GoogleFonts.inter(
                                   fontSize: 12,
-                                  color: AppTheme.textMute,
+                                  color: Dash.textMute,
                                   fontWeight: FontWeight.w300),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis),
@@ -1394,8 +1847,8 @@ class _CategoriesTab extends StatelessWidget {
         builder: (ctx, setS) {
           final keyboardHeight = MediaQuery.of(ctx).viewInsets.bottom;
           return Container(
-            decoration: const BoxDecoration(
-                color: AppTheme.white,
+            decoration: BoxDecoration(
+                color: Dash.card,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
             padding: EdgeInsets.fromLTRB(22, 22, 22, 22 + keyboardHeight),
             child: SingleChildScrollView(
@@ -1408,14 +1861,14 @@ class _CategoriesTab extends StatelessWidget {
                             width: 36,
                             height: 4,
                             decoration: BoxDecoration(
-                                color: AppTheme.border,
+                                color: Dash.border,
                                 borderRadius: BorderRadius.circular(2)))),
                     const SizedBox(height: 18),
                     Text('ADD CATEGORY',
                         style: GoogleFonts.poppins(
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
-                            color: AppTheme.navy,
+                            color: Dash.accent,
                             letterSpacing: 1)),
                     const SizedBox(height: 16),
                     Row(children: [
@@ -1436,23 +1889,23 @@ class _CategoriesTab extends StatelessWidget {
                         style: GoogleFonts.poppins(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: AppTheme.textMute,
+                            color: Dash.textMute,
                             letterSpacing: 1.2)),
                     const SizedBox(height: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 4),
                       decoration: BoxDecoration(
-                          color: AppTheme.offWhite,
+                          color: Dash.field,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppTheme.border)),
+                          border: Border.all(color: Dash.border)),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
                           value: division,
                           isExpanded: true,
-                          dropdownColor: AppTheme.white,
-                          style: GoogleFonts.inter(
-                              fontSize: 14, color: AppTheme.navyDark),
+                          dropdownColor: Dash.card,
+                          style:
+                              GoogleFonts.inter(fontSize: 14, color: Dash.text),
                           items: ['Cleaning', 'Home Care', 'Construction']
                               .map((d) =>
                                   DropdownMenuItem(value: d, child: Text(d)))
@@ -1524,43 +1977,44 @@ class _ServiceBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-          color: (none ? AppTheme.goldDark : AppTheme.navy).withOpacity(.07),
+          color: (none ? AppTheme.goldDark : Dash.accent).withOpacity(.07),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-              color: (none ? AppTheme.goldDark : AppTheme.navy).withOpacity(.2))),
+              color: (none ? AppTheme.goldDark : Dash.accent).withOpacity(.2))),
       child: Row(children: [
         Icon(none ? Icons.info_outline : Icons.work_outline,
-            size: 18, color: none ? AppTheme.goldDark : AppTheme.navy),
+            size: 18, color: none ? AppTheme.goldDark : Dash.accent),
         const SizedBox(width: 10),
         Expanded(
           child: Text(
               none
                   ? 'You have not been assigned to a service yet. Ask the admin to set your service.'
                   : 'Showing bookings for your service: $category',
-              style: GoogleFonts.inter(fontSize: 12.5, color: AppTheme.navyDark)),
+              style: GoogleFonts.inter(fontSize: 12.5, color: Dash.text)),
         ),
       ]),
     );
   }
 }
+
 Widget _sectionHeader(String t) => Text(t,
     style: GoogleFonts.poppins(
         fontSize: 12,
         fontWeight: FontWeight.w800,
-        color: AppTheme.navy,
+        color: Dash.accent,
         letterSpacing: 1.5));
 
 Widget _emptyState(String msg) => Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.inbox_outlined, size: 48, color: AppTheme.textMute),
+          Icon(Icons.inbox_outlined, size: 48, color: Dash.textMute),
           const SizedBox(height: 12),
           Text(msg,
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
                   fontSize: 14,
-                  color: AppTheme.textMute,
+                  color: Dash.textMute,
                   fontWeight: FontWeight.w300)),
         ]),
       ),
@@ -1571,26 +2025,26 @@ Widget _inputField(String label, TextEditingController ctrl, IconData icon,
     TextField(
       controller: ctrl,
       keyboardType: type,
-      style: GoogleFonts.inter(fontSize: 14, color: AppTheme.navyDark),
+      style: GoogleFonts.inter(fontSize: 14, color: Dash.text),
       decoration: InputDecoration(
         labelText: label,
         labelStyle: GoogleFonts.poppins(
             fontSize: 11,
             fontWeight: FontWeight.w700,
-            color: AppTheme.textMute,
+            color: Dash.textMute,
             letterSpacing: 0.8),
-        prefixIcon: Icon(icon, size: 18, color: AppTheme.textMute),
+        prefixIcon: Icon(icon, size: 18, color: Dash.textMute),
         filled: true,
-        fillColor: AppTheme.offWhite,
+        fillColor: Dash.field,
         border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppTheme.border)),
+            borderSide: BorderSide(color: Dash.border)),
         enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppTheme.border)),
+            borderSide: BorderSide(color: Dash.border)),
         focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppTheme.navy, width: 1.5)),
+            borderSide: BorderSide(color: Dash.accent, width: 1.5)),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
       ),
@@ -1610,7 +2064,7 @@ class _BookingRow extends StatelessWidget {
 
   Color get _statusColor => switch (booking.status) {
         'active' => AppTheme.green,
-        'complete' => AppTheme.navy,
+        'complete' => Dash.accent,
         'cancelled' => AppTheme.red,
         _ => AppTheme.goldDark,
       };
@@ -1620,9 +2074,9 @@ class _BookingRow extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-          color: AppTheme.white,
+          color: Dash.card,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppTheme.border),
+          border: Border.all(color: Dash.border),
           boxShadow: [
             BoxShadow(color: Colors.black.withOpacity(.03), blurRadius: 6)
           ]),
@@ -1632,12 +2086,12 @@ class _BookingRow extends StatelessWidget {
             style: GoogleFonts.poppins(
                 fontSize: 14,
                 fontWeight: FontWeight.w900,
-                color: AppTheme.navy,
+                color: Dash.accent,
                 letterSpacing: 0.3)),
         subtitle: Text('${booking.clientName}  •  ${booking.date}',
             style: GoogleFonts.inter(
                 fontSize: 11,
-                color: AppTheme.textMute,
+                color: Dash.textMute,
                 fontWeight: FontWeight.w300)),
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -1692,13 +2146,14 @@ class _BookingRow extends StatelessWidget {
                 const SizedBox(width: 6),
                 _ActionBtn(
                     label: 'Complete',
-                    color: AppTheme.navy,
+                    color: Dash.accent,
                     onTap: () => _setStatus('complete')),
                 if (isAdmin) ...[
                   const Spacer(),
                   IconButton(
                     tooltip: 'Delete booking',
-                    icon: const Icon(Icons.delete_outline, color: AppTheme.red, size: 20),
+                    icon: const Icon(Icons.delete_outline,
+                        color: AppTheme.red, size: 20),
                     onPressed: () => _confirmDelete(context),
                   ),
                 ],
@@ -1730,7 +2185,8 @@ class _BookingRow extends StatelessWidget {
               child: const Text('Cancel')),
           TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Delete', style: TextStyle(color: AppTheme.red))),
+              child:
+                  const Text('Delete', style: TextStyle(color: AppTheme.red))),
         ],
       ),
     );
@@ -1741,19 +2197,19 @@ class _BookingRow extends StatelessWidget {
   Widget _row(IconData icon, String label, String value) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(icon, size: 14, color: AppTheme.textMute),
+          Icon(icon, size: 14, color: Dash.textMute),
           const SizedBox(width: 8),
           Text('$label: ',
               style: GoogleFonts.poppins(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: AppTheme.textMid,
+                  color: Dash.textMid,
                   letterSpacing: 0.3)),
           Expanded(
               child: Text(value,
                   style: GoogleFonts.inter(
                       fontSize: 12,
-                      color: AppTheme.navyDark,
+                      color: Dash.text,
                       fontWeight: FontWeight.w400))),
         ]),
       );
@@ -1770,9 +2226,9 @@ class _StaffOnDutyRow extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-          color: AppTheme.white,
+          color: Dash.card,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppTheme.border)),
+          border: Border.all(color: Dash.border)),
       child: Row(children: [
         Container(
             width: 36,
@@ -1793,12 +2249,12 @@ class _StaffOnDutyRow extends StatelessWidget {
               style: GoogleFonts.poppins(
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
-                  color: AppTheme.navy,
+                  color: Dash.accent,
                   letterSpacing: 0.3)),
           Text(data['staffRole'] ?? 'Staff',
               style: GoogleFonts.inter(
                   fontSize: 11,
-                  color: AppTheme.textMute,
+                  color: Dash.textMute,
                   fontWeight: FontWeight.w300)),
         ])),
         if (clockIn != null)
@@ -1823,13 +2279,12 @@ class _QuoteRow extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-            color: AppTheme.white,
+            color: Dash.card,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppTheme.border)),
+            border: Border.all(color: Dash.border)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            const Icon(Icons.request_quote_outlined,
-                size: 22, color: AppTheme.navy),
+            Icon(Icons.request_quote_outlined, size: 22, color: Dash.accent),
             const SizedBox(width: 10),
             Expanded(
                 child: Column(
@@ -1839,11 +2294,11 @@ class _QuoteRow extends StatelessWidget {
                       style: GoogleFonts.poppins(
                           fontSize: 13,
                           fontWeight: FontWeight.w800,
-                          color: AppTheme.navy)),
+                          color: Dash.accent)),
                   Text(data['clientEmail'] ?? '',
                       style: GoogleFonts.inter(
                           fontSize: 11,
-                          color: AppTheme.textMute,
+                          color: Dash.textMute,
                           fontWeight: FontWeight.w300)),
                 ])),
             GestureDetector(
@@ -1855,7 +2310,7 @@ class _QuoteRow extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                      color: AppTheme.navy,
+                      color: Dash.accent,
                       borderRadius: BorderRadius.circular(8)),
                   child: Text('Mark Reviewed',
                       style: GoogleFonts.poppins(
@@ -1868,7 +2323,7 @@ class _QuoteRow extends StatelessWidget {
           Text(data['description'] ?? '',
               style: GoogleFonts.inter(
                   fontSize: 12,
-                  color: AppTheme.textMid,
+                  color: Dash.textMid,
                   fontWeight: FontWeight.w300,
                   height: 1.5),
               maxLines: 2,
@@ -1892,9 +2347,9 @@ class _StatCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-              color: AppTheme.white,
+              color: Dash.card,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppTheme.border),
+              border: Border.all(color: Dash.border),
               boxShadow: [
                 BoxShadow(color: Colors.black.withOpacity(.03), blurRadius: 6)
               ]),
@@ -1918,7 +2373,7 @@ class _StatCard extends StatelessWidget {
               Text(label,
                   style: GoogleFonts.inter(
                       fontSize: 10,
-                      color: AppTheme.textMute,
+                      color: Dash.textMute,
                       fontWeight: FontWeight.w300)),
             ]),
           ]),
@@ -1993,13 +2448,13 @@ class _PayBadge extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-            color: AppTheme.navy.withOpacity(.08),
+            color: Dash.accent.withOpacity(.08),
             borderRadius: BorderRadius.circular(6)),
         child: Text(_label,
             style: GoogleFonts.poppins(
                 fontSize: 10,
                 fontWeight: FontWeight.w800,
-                color: AppTheme.navy,
+                color: Dash.accent,
                 letterSpacing: 0.4)),
       );
 }

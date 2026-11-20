@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import '../models/chat_message.dart';
 import '../services/voice_note_service.dart';
 import '../theme/app_theme.dart';
+import '../theme/dash_theme.dart';
 
 String formatClock(Duration d) {
   final m = d.inMinutes;
@@ -123,7 +124,7 @@ class _VoiceNotePlayerState extends State<VoiceNotePlayer> {
   @override
   Widget build(BuildContext context) {
     final fg = widget.onDark ? Colors.white : AppTheme.navy;
-    final track = widget.onDark ? Colors.white24 : AppTheme.border;
+    final track = widget.onDark ? Colors.white24 : Dash.border;
     final playing = _state == PlayerState.playing;
     final total = _dur.inMilliseconds <= 0 ? 1 : _dur.inMilliseconds;
     final value = (_pos.inMilliseconds / total).clamp(0.0, 1.0);
@@ -172,7 +173,7 @@ class _VoiceNotePlayerState extends State<VoiceNotePlayer> {
         Text(formatClock(label),
             style: GoogleFonts.inter(
                 fontSize: 11,
-                color: widget.onDark ? Colors.white70 : AppTheme.textMid)),
+                color: widget.onDark ? Colors.white70 : Dash.textMid)),
       ]),
     );
   }
@@ -196,9 +197,9 @@ class CallLogChip extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 8),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: AppTheme.white,
+          color: Dash.card,
           borderRadius: BorderRadius.circular(100),
-          border: Border.all(color: AppTheme.border),
+          border: Border.all(color: Dash.border),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(
@@ -211,12 +212,12 @@ class CallLogChip extends StatelessWidget {
               style: GoogleFonts.inter(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: AppTheme.navyDark)),
+                  color: Dash.text)),
           if (time.isNotEmpty) ...[
             const SizedBox(width: 8),
             Text(time,
                 style:
-                    GoogleFonts.inter(fontSize: 11, color: AppTheme.textMute)),
+                    GoogleFonts.inter(fontSize: 11, color: Dash.textMute)),
           ],
         ]),
       ),
@@ -352,9 +353,9 @@ class RecordingStrip extends StatelessWidget {
         height: 42,
         padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
-          color: AppTheme.offWhite,
+          color: Dash.field,
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: AppTheme.border),
+          border: Border.all(color: Dash.border),
         ),
         child: Row(children: [
           const _BlinkingDot(),
@@ -363,12 +364,12 @@ class RecordingStrip extends StatelessWidget {
               style: GoogleFonts.inter(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: AppTheme.navyDark)),
+                  color: Dash.text)),
           const Spacer(),
-          const Icon(Icons.chevron_left_rounded,
-              size: 18, color: AppTheme.textMute),
+          Icon(Icons.chevron_left_rounded,
+              size: 18, color: Dash.textMute),
           Text('Slide to cancel',
-              style: GoogleFonts.inter(fontSize: 12, color: AppTheme.textMute)),
+              style: GoogleFonts.inter(fontSize: 12, color: Dash.textMute)),
         ]),
       ),
     );
@@ -417,15 +418,15 @@ Future<bool> confirmDelete(BuildContext context,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       title: Text(title,
           style: GoogleFonts.poppins(
-              fontSize: 19, fontWeight: FontWeight.w800, color: AppTheme.navyDark)),
+              fontSize: 19, fontWeight: FontWeight.w800, color: Dash.text)),
       content: Text(message,
-          style: GoogleFonts.inter(fontSize: 14, color: AppTheme.textMid)),
+          style: GoogleFonts.inter(fontSize: 14, color: Dash.textMid)),
       actions: [
         TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text('Cancel',
                 style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w700, color: AppTheme.textMute))),
+                    fontWeight: FontWeight.w700, color: Dash.textMute))),
         ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(

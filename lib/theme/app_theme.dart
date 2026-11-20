@@ -105,4 +105,63 @@ class AppTheme {
       unselectedLabelStyle: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w400),
     ),
   );
+
+  /// Night theme for the admin & staff portal (see ThemeController).
+  static ThemeData get dark {
+    const bg = Color(0xFF0A1326);
+    const card = Color(0xFF14213D);
+    const field = Color(0xFF1B2A4A);
+    const line = Color(0xFF263A63);
+    final base = ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: navy,
+        brightness: Brightness.dark,
+      ).copyWith(surface: card, primary: const Color(0xFF8FB4FF), secondary: gold),
+      scaffoldBackgroundColor: bg,
+    );
+    return base.copyWith(
+      textTheme: GoogleFonts.interTextTheme(base.textTheme).apply(
+          bodyColor: Colors.white, displayColor: Colors.white),
+      cardColor: card,
+      dialogTheme: const DialogThemeData(backgroundColor: card),
+      bottomSheetTheme:
+          const BottomSheetThemeData(backgroundColor: card, modalBackgroundColor: card),
+      popupMenuTheme: const PopupMenuThemeData(color: field),
+      dividerColor: line,
+      appBarTheme: AppBarTheme(
+        backgroundColor: const Color(0xFF0F1B33),
+        foregroundColor: white,
+        elevation: 0,
+        centerTitle: false,
+        titleTextStyle: GoogleFonts.poppins(
+            fontSize: 18, fontWeight: FontWeight.w600, color: white, letterSpacing: 0.3),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: gold,
+          foregroundColor: navyDark,
+          elevation: 0,
+          textStyle: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600),
+          shape: const StadiumBorder(),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: field,
+        hintStyle: GoogleFonts.inter(
+            fontSize: 14, color: const Color(0xFF7D8BA6), fontWeight: FontWeight.w300),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: line)),
+        enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: line)),
+        focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: gold, width: 1.5)),
+      ),
+    );
+  }
 }

@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_theme.dart';
+import '../theme/dash_theme.dart';
 import '../models/chat_message.dart';
 import '../services/call_service.dart';
 import '../services/chat_service.dart';
@@ -141,13 +142,13 @@ class _AdminChatThreadScreenState extends State<AdminChatThreadScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.offWhite,
+      backgroundColor: Dash.bg,
       appBar: AppBar(
         backgroundColor: AppTheme.navyDark,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(widget.clientName, style: GoogleFonts.barlowCondensed(fontSize: 17, fontWeight: FontWeight.w900, color: AppTheme.white)),
+            Text(widget.clientName, style: GoogleFonts.barlowCondensed(fontSize: 17, fontWeight: FontWeight.w900, color: Dash.card)),
             if (widget.clientEmail.isNotEmpty)
               Text(widget.clientEmail, style: GoogleFonts.nunito(fontSize: 11, color: Colors.white54)),
           ],
@@ -229,7 +230,7 @@ class _AdminChatThreadScreenState extends State<AdminChatThreadScreen> {
 
   Widget _buildInput() => Container(
     padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-    decoration: const BoxDecoration(color: AppTheme.white, border: Border(top: BorderSide(color: AppTheme.border))),
+    decoration: BoxDecoration(color: Dash.card, border: Border(top: BorderSide(color: Dash.border))),
     child: ListenableBuilder(
       listenable: _recorder,
       builder: (_, __) => Row(
@@ -239,19 +240,19 @@ class _AdminChatThreadScreenState extends State<AdminChatThreadScreen> {
                 ? RecordingStrip(recorder: _recorder)
                 : Container(
                     decoration: BoxDecoration(
-                      color: AppTheme.offWhite,
+                      color: Dash.field,
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: AppTheme.border),
+                      border: Border.all(color: Dash.border),
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: TextField(
                       controller: _msgCtrl,
                       style: GoogleFonts.nunito(
-                          fontSize: 14, color: AppTheme.navyDark),
+                          fontSize: 14, color: Dash.text),
                       decoration: InputDecoration(
                         hintText: 'Reply to client...',
                         hintStyle: GoogleFonts.nunito(
-                            fontSize: 14, color: AppTheme.textMute),
+                            fontSize: 14, color: Dash.textMute),
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
                         focusedBorder: InputBorder.none,
@@ -306,14 +307,14 @@ class _StaffViewBubble extends StatelessWidget {
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: isStaffMsg ? AppTheme.navy : AppTheme.white,
+          color: isStaffMsg ? AppTheme.navy : Dash.card,
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(16),
             topRight: const Radius.circular(16),
             bottomLeft: Radius.circular(isStaffMsg ? 16 : 4),
             bottomRight: Radius.circular(isStaffMsg ? 4 : 16),
           ),
-          border: isStaffMsg ? null : Border.all(color: AppTheme.border),
+          border: isStaffMsg ? null : Border.all(color: Dash.border),
           boxShadow: isStaffMsg ? null : [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 4, offset: const Offset(0, 2))],
         ),
         child: Column(
@@ -322,10 +323,10 @@ class _StaffViewBubble extends StatelessWidget {
             if (msg.hasAudio)
               VoiceNotePlayer(url: msg.audioUrl, durationMs: msg.audioMs, onDark: isStaffMsg)
             else
-              Text(msg.text, style: GoogleFonts.nunito(fontSize: 14, color: isStaffMsg ? Colors.white : AppTheme.navyDark, height: 1.45)),
+              Text(msg.text, style: GoogleFonts.nunito(fontSize: 14, color: isStaffMsg ? Colors.white : Dash.text, height: 1.45)),
             const SizedBox(height: 4),
             Text(isStaffMsg ? 'You' : 'Client',
-              style: GoogleFonts.barlowCondensed(fontSize: 9, fontWeight: FontWeight.w700, color: isStaffMsg ? Colors.white54 : AppTheme.textMute, letterSpacing: 0.5),
+              style: GoogleFonts.barlowCondensed(fontSize: 9, fontWeight: FontWeight.w700, color: isStaffMsg ? Colors.white54 : Dash.textMute, letterSpacing: 0.5),
             ),
           ],
         ),

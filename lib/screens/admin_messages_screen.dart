@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_theme.dart';
+import '../theme/dash_theme.dart';
 import 'admin_chat_thread_screen.dart';
 import '../services/call_service.dart';
 import '../services/chat_service.dart';
@@ -28,7 +29,7 @@ class AdminMessagesScreen extends StatelessWidget {
         final docs = snap.data?.docs ?? [];
         if (docs.isEmpty) {
           return Center(
-            child: Text('No messages yet.', style: GoogleFonts.nunito(fontSize: 14, color: AppTheme.textMute)),
+            child: Text('No messages yet.', style: GoogleFonts.nunito(fontSize: 14, color: Dash.textMute)),
           );
         }
 
@@ -69,7 +70,7 @@ class AdminMessagesScreen extends StatelessWidget {
                   from == 'client' ? text : 'You: $text',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.nunito(fontSize: 13, color: AppTheme.textMute),
+                  style: GoogleFonts.nunito(fontSize: 13, color: Dash.textMute),
                 ),
                 trailing: from == 'client'
                     ? Container(width: 10, height: 10, decoration: const BoxDecoration(color: AppTheme.gold, shape: BoxShape.circle))

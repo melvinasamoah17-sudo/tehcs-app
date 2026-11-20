@@ -9,6 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'firebase_options.dart';
 import 'theme/app_theme.dart';
+import 'theme/dash_theme.dart';
 import 'screens/splash_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'services/call_service.dart';
@@ -43,6 +44,8 @@ void main() async {
     debugPrint('Firebase Core initialization error: $e');
     firebaseError = e.toString();
   }
+
+  await ThemeController.load(); // admin/staff day-night choice
 
   runApp(TEHCSApp(firebaseError: firebaseError));
 }
@@ -125,27 +128,32 @@ class _TEHCSAppState extends State<TEHCSApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'TEHCS',
-      debugShowCheckedModeBanner: false,
-      navigatorKey: _navigatorKey,
-      theme: AppTheme.theme,
-      locale: const Locale('en', 'GB'),
-      supportedLocales: const [Locale('en', 'GB')],
-      localizationsDelegates: GlobalMaterialLocalizations.delegates,
-      home: widget.firebaseError != null
-          ? Scaffold(
-              body: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(20.0),
-                  child: Text(
-                    'Firebase Error: ${widget.firebaseError}\n\nPlease check your configuration.',
-                    textAlign: TextAlign.center,
+    return ListenableBuilder(
+      listenable: ThemeController.changes,
+      builder: (_, __) => MaterialApp(
+        title: 'TEHCS',
+        debugShowCheckedModeBanner: false,
+        navigatorKey: _navigatorKey,
+        theme: AppTheme.theme,
+        darkTheme: AppTheme.dark,
+        themeMode: ThemeController.isDark ? ThemeMode.dark : ThemeMode.light,
+        locale: const Locale('en', 'GB'),
+        supportedLocales: const [Locale('en', 'GB')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        home: widget.firebaseError != null
+            ? Scaffold(
+                body: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Text(
+                      'Firebase Error: ${widget.firebaseError}\n\nPlease check your configuration.',
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ),
-              ),
-            )
-          : const SplashScreen(),
+              )
+            : const SplashScreen(),
+      ),
     );
   }
 }

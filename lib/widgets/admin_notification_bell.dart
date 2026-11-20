@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
+import '../theme/dash_theme.dart';
 
 /// Bell with an unread badge for the admin portal. Opens a list of recent
 /// staff activity and pops a snackbar when a new one arrives live.
@@ -79,19 +80,19 @@ class _AdminNotificationBellState extends State<AdminNotificationBell> {
         maxChildSize: .92,
         expand: false,
         builder: (_, scroll) => Container(
-          decoration: const BoxDecoration(
-            color: AppTheme.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+          decoration: BoxDecoration(
+            color: Dash.card,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
           ),
           child: Column(children: [
             const SizedBox(height: 10),
             Container(width: 36, height: 4,
-              decoration: BoxDecoration(color: AppTheme.border, borderRadius: BorderRadius.circular(2))),
+              decoration: BoxDecoration(color: Dash.border, borderRadius: BorderRadius.circular(2))),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 14, 12, 6),
               child: Row(children: [
                 Expanded(child: Text('STAFF ACTIVITY', style: GoogleFonts.poppins(
-                  fontSize: 16, fontWeight: FontWeight.w900, color: AppTheme.navy, letterSpacing: 1))),
+                  fontSize: 16, fontWeight: FontWeight.w900, color: Dash.accent, letterSpacing: 1))),
                 TextButton(
                   onPressed: () { _markAllRead(docs); Navigator.pop(ctx); },
                   child: Text('Mark all read', style: GoogleFonts.poppins(
@@ -102,7 +103,7 @@ class _AdminNotificationBellState extends State<AdminNotificationBell> {
             const Divider(height: 1),
             Expanded(
               child: docs.isEmpty
-                  ? Center(child: Text('No activity yet', style: GoogleFonts.inter(color: AppTheme.textMute)))
+                  ? Center(child: Text('No activity yet', style: GoogleFonts.inter(color: Dash.textMute)))
                   : ListView.separated(
                       controller: scroll,
                       itemCount: docs.length,
@@ -120,10 +121,10 @@ class _AdminNotificationBellState extends State<AdminNotificationBell> {
                             child: Icon(_icon(type), color: _color(type), size: 20),
                           ),
                           title: Text(d['title'] ?? '', style: GoogleFonts.poppins(
-                            fontSize: 14, fontWeight: unread ? FontWeight.w800 : FontWeight.w600, color: AppTheme.navy)),
+                            fontSize: 14, fontWeight: unread ? FontWeight.w800 : FontWeight.w600, color: Dash.accent)),
                           subtitle: Text(
                             '${d['body'] ?? ''}${at != null ? '\n${DateFormat('d MMM, HH:mm').format(at)}' : ''}',
-                            style: GoogleFonts.inter(fontSize: 12, color: AppTheme.textMid, height: 1.4)),
+                            style: GoogleFonts.inter(fontSize: 12, color: Dash.textMid, height: 1.4)),
                           isThreeLine: at != null,
                         );
                       },
@@ -146,7 +147,7 @@ class _AdminNotificationBellState extends State<AdminNotificationBell> {
         return IconButton(
           onPressed: () => _open(docs),
           icon: Stack(clipBehavior: Clip.none, children: [
-            const Icon(Icons.notifications_none_rounded, color: Colors.white70, size: 24),
+            Icon(Icons.notifications_none_rounded, color: Dash.text, size: 26),
             if (unread > 0)
               Positioned(
                 right: -4, top: -4,
